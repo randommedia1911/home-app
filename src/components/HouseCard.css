@@ -154,6 +154,106 @@
 .loan-row.highlight-row span:first-child { color: #6366f1 !important; font-weight: 600; }
 .loan-row.highlight-row span:last-child { color: #6366f1 !important; font-weight: 700; }
 
+/* D vs A split */
+.split-phase-label {
+  font-size: 0.72rem; font-weight: 700; color: #6b7280;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
+}
+.split-phase-label.after { margin-top: 10px; color: #059669; }
+.phase-tag {
+  background: #e0e7ff; color: #4338ca; font-size: 0.68rem;
+  padding: 1px 6px; border-radius: 100px; font-weight: 600;
+  text-transform: none; letter-spacing: 0;
+}
+.after-tag { background: #d1fae5; color: #065f46; }
+
+.d-card-after { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 10px 12px; display: flex; align-items: flex-start; gap: 8px; }
+.a-card-after { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 10px 12px; display: flex; align-items: flex-start; gap: 8px; }
+.after-amount { color: #059669 !important; }
+
+.split-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.split-card {
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.d-card { background: #f5f3ff; border: 1px solid #ddd6fe; }
+.a-card { background: #fdf2f8; border: 1px solid #fbcfe8; }
+
+.split-avatar {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.8rem; font-weight: 800;
+  flex-shrink: 0;
+}
+.d-avatar { background: #ede9fe; color: #6d28d9; }
+.a-avatar { background: #fce7f3; color: #be185d; }
+
+/* Ownership bar */
+.ownership-section { margin-bottom: 16px; }
+.ownership-label-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+.own-label { font-size: 0.78rem; font-weight: 700; }
+.ownership-bar {
+  height: 10px;
+  border-radius: 100px;
+  overflow: hidden;
+  display: flex;
+  background: #f3f4f6;
+}
+.own-fill-d { background: #7c3aed; transition: width 0.3s ease; }
+.own-fill-a { background: #be185d; transition: width 0.3s ease; }
+.own-row-label { font-size: 0.68rem; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px; }
+
+.split-name { font-size: 0.7rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.4px; }
+.split-amount { font-size: 1.1rem; font-weight: 800; line-height: 1.2; }
+.d-card .split-amount { color: #6d28d9; }
+.a-card .split-amount { color: #be185d; }
+.split-sub { font-size: 0.65rem; color: #9ca3af; margin-top: 1px; line-height: 1.3; }
+
+.d-color-text { color: #7c3aed !important; font-weight: 700 !important; }
+.a-color-text { color: #be185d !important; font-weight: 700 !important; }
+
+/* Sale calculator */
+.sale-section { display: flex; flex-direction: column; gap: 6px; }
+.sale-title {
+  font-size: 0.72rem; font-weight: 700; color: #059669;
+  text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;
+}
+.sale-row { display: flex; justify-content: space-between; font-size: 0.8rem; }
+.sale-row span:first-child { color: #6b7280; }
+.sale-row span:last-child { font-weight: 600; color: #374151; }
+.sale-row .neg { color: #ef4444 !important; }
+.sale-row.total-row span { font-weight: 700; color: #111827 !important; font-size: 0.88rem; }
+.sale-split {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px;
+}
+.sale-person {
+  border-radius: 8px; padding: 8px 10px; text-align: center;
+}
+.d-sale { background: #f5f3ff; border: 1px solid #ddd6fe; }
+.a-sale { background: #fdf2f8; border: 1px solid #fbcfe8; }
+.sale-person-label { font-size: 0.7rem; font-weight: 700; color: #6b7280; margin-bottom: 2px; }
+.d-sale .sale-person-amt { color: #6d28d9; font-size: 1rem; font-weight: 800; }
+.a-sale .sale-person-amt { color: #be185d; font-size: 1rem; font-weight: 800; }
+.sale-note {
+  font-size: 0.72rem; color: #d97706; background: #fffbeb;
+  border: 1px solid #fde68a; border-radius: 6px; padding: 6px 8px;
+  line-height: 1.4; margin-top: 2px;
+}
+
 .card-notes {
   font-size: 0.8rem;
   color: #6b7280;

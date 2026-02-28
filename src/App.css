@@ -8,48 +8,72 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-.app { min-height: 100vh; }
+.app { min-height: 100vh; display: flex; flex-direction: column; }
 
+/* Header */
 .app-header {
   background: #fff;
   border-bottom: 1px solid #e5e7eb;
   position: sticky;
   top: 0;
   z-index: 50;
+  flex-shrink: 0;
 }
 .header-inner {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 16px 24px;
+  padding: 14px 24px;
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 .header-inner h1 {
-  font-size: 1.35rem;
+  font-size: 1.2rem;
   font-weight: 800;
   margin: 0 0 2px;
   color: #111827;
   letter-spacing: -0.3px;
 }
-.subtitle {
-  font-size: 0.82rem;
-  color: #6b7280;
-  margin: 0;
+.subtitle { font-size: 0.78rem; color: #6b7280; margin: 0; }
+
+/* Layout: sidebar + content */
+.app-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  background: #fff;
+  border-right: 1px solid #e5e7eb;
+  overflow-y: auto;
+  position: fixed;
+  top: 53px;
+  left: 0;
+  height: calc(100vh - 53px);
+  z-index: 40;
 }
 
 .main {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 32px 24px;
+  flex: 1;
+  padding: 24px;
+  overflow-x: auto;
+  margin-left: 280px;
 }
 
 .cards-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  display: flex;
+  flex-direction: row;
   gap: 20px;
+  padding-bottom: 12px;
+  min-width: min-content;
+}
+.cards-grid > * {
+  flex: 0 0 320px;
+  width: 320px;
 }
 
+/* Empty state */
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -62,6 +86,7 @@ body {
 .empty-state h2 { font-size: 1.25rem; color: #111827; margin: 0 0 8px; }
 .empty-state p { color: #6b7280; margin: 0 0 24px; }
 
+/* Buttons */
 .btn-primary {
   background: #6366f1;
   color: #fff;
@@ -91,9 +116,8 @@ body {
 }
 .btn-secondary:hover { background: #e5e7eb; }
 
-@media (max-width: 600px) {
-  .header-inner { flex-direction: column; align-items: flex-start; gap: 12px; }
-  .main { padding: 20px 16px; }
-  .cards-grid { grid-template-columns: 1fr; }
-  .form-row.two-col, .form-row.three-col { grid-template-columns: 1fr; }
+@media (max-width: 768px) {
+  .app-body { flex-direction: column; }
+  .sidebar { width: 100%; height: auto; position: static; border-right: none; border-bottom: 1px solid #e5e7eb; }
+  .main { padding: 16px; }
 }

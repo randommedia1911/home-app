@@ -44,15 +44,27 @@
 
 .compare-info { flex: 1; min-width: 0; }
 
+.compare-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+  flex-wrap: wrap;
+}
 .compare-name {
   font-size: 0.85rem;
   font-weight: 600;
   color: #111827;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-bottom: 5px;
 }
+.compare-splits { display: flex; gap: 5px; }
+.d-badge, .a-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 100px;
+}
+.d-badge { background: #ede9fe; color: #6d28d9; }
+.a-badge { background: #fce7f3; color: #be185d; }
 
 .compare-track {
   height: 8px;

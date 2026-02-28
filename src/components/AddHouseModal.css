@@ -156,6 +156,58 @@ textarea { resize: vertical; min-height: 60px; }
   font-weight: 500;
 }
 
+.photo-input-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.photo-upload-btn {
+  background: #f3f4f6;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #374151;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+  flex-direction: row;
+  gap: 0;
+}
+.photo-upload-btn:hover { background: #e5e7eb; }
+.photo-or { font-size: 0.75rem; color: #9ca3af; flex-shrink: 0; }
+.photo-url-input { flex: 1; min-width: 120px; }
+
+.photo-preview-wrap {
+  margin-top: 8px;
+  position: relative;
+  display: inline-block;
+}
+.photo-preview {
+  width: 100%;
+  max-height: 140px;
+  object-fit: cover;
+  border-radius: 8px;
+  display: block;
+  border: 1px solid #e5e7eb;
+}
+.photo-clear {
+  position: absolute;
+  top: 6px; right: 6px;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 0.72rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+.photo-clear:hover { background: rgba(220,38,38,0.8); }
+
 .modal-footer {
   display: flex;
   gap: 10px;

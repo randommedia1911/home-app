@@ -5,7 +5,7 @@ import CompareBar from './components/CompareBar'
 import GlobalControls from './components/GlobalControls'
 import './App.css'
 
-const STORAGE_KEY = 'house-comparison-v8'
+const STORAGE_KEY = 'house-comparison-v12'
 const CLOSING_COST_PCT = 4
 
 const defaultHouses = [
@@ -31,7 +31,7 @@ const defaultHouses = [
     nickname: 'W Macarthur Blvd Condo',
     address: '485 W Macarthur Blvd #407, Oakland, CA 94609',
     link: '',
-    imageUrl: '',
+    imageUrl: '/macarthur.png',
     price: 415000,
     interestRate: 6,
     loanTermYears: 30,
@@ -41,6 +41,40 @@ const defaultHouses = [
     beds: 2,
     baths: 1,
     sqft: 1033,
+    notes: '',
+  },
+  {
+    id: '3',
+    nickname: 'Franklin St Condo',
+    address: '801 Franklin St #205, Oakland, CA 94607',
+    link: 'https://www.redfin.com/CA/Oakland/801-Franklin-St-94607/unit-205/home/1156035',
+    imageUrl: '/franklin.png',
+    price: 390000,
+    interestRate: 6,
+    loanTermYears: 30,
+    propertyTaxAnnual: 4872,
+    hoaMonthly: 816,
+    insuranceMonthly: 78,
+    beds: 2,
+    baths: 1.5,
+    sqft: 1140,
+    notes: '',
+  },
+  {
+    id: '4',
+    nickname: 'Thrush Ave Condo',
+    address: '1410 Thrush Ave #3, Ashland, CA 94578',
+    link: 'https://www.redfin.com/CA/Ashland/1410-Thrush-Ave-94578/unit-3/home/1977797',
+    imageUrl: '/thrush.png',
+    price: 365000,
+    interestRate: 6,
+    loanTermYears: 30,
+    propertyTaxAnnual: 4560,
+    hoaMonthly: 598,
+    insuranceMonthly: 73,
+    beds: 2,
+    baths: 2,
+    sqft: 820,
     notes: '',
   },
 ]
@@ -58,7 +92,12 @@ export default function App() {
   const [houses, setHouses] = useState(loadHouses)
   const [showModal, setShowModal] = useState(false)
   const [editingHouse, setEditingHouse] = useState(null)
-  const [cashBudget, setCashBudget] = useState(100000)
+  const [dDown, setDDown] = useState(0)
+  const [aDown, setADown] = useState(100000)
+  const [aMonthlyTarget, setAMonthlyTarget] = useState(1100)
+  const [equalizeYears, setEqualizeYears] = useState(30)
+  const [saleYear, setSaleYear] = useState(30)
+  const [utilities, setUtilities] = useState({ water: 60, trash: 40, electricity: 300 })
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(houses))
@@ -97,11 +136,18 @@ export default function App() {
         </div>
       </header>
 
-      <GlobalControls
-        cashBudget={cashBudget}
-        setCashBudget={setCashBudget}
-        closingCostPct={CLOSING_COST_PCT}
-      />
+      <div className="app-body">
+      <aside className="sidebar">
+        <GlobalControls
+          dDown={dDown} setDDown={setDDown}
+          aDown={aDown} setADown={setADown}
+          aMonthlyTarget={aMonthlyTarget} setAMonthlyTarget={setAMonthlyTarget}
+          equalizeYears={equalizeYears} setEqualizeYears={setEqualizeYears}
+          saleYear={saleYear} setSaleYear={setSaleYear}
+          utilities={utilities} setUtilities={setUtilities}
+          closingCostPct={CLOSING_COST_PCT}
+        />
+      </aside>
 
       <main className="main">
         {houses.length === 0 ? (
@@ -113,20 +159,18 @@ export default function App() {
           </div>
         ) : (
           <>
-            {houses.length > 1 && (
-              <CompareBar
-                houses={houses}
-                cashBudget={cashBudget}
-                closingCostPct={CLOSING_COST_PCT}
-              />
-            )}
+
             <div className="cards-grid">
               {houses.map(house => (
                 <HouseCard
                   key={house.id}
                   house={house}
-                  cashBudget={cashBudget}
+                  dDown={dDown} aDown={aDown}
                   closingCostPct={CLOSING_COST_PCT}
+                  aMonthlyTarget={aMonthlyTarget}
+                  equalizeYears={equalizeYears}
+                  saleYear={saleYear}
+                  utilities={utilities}
                   onEdit={() => openEdit(house)}
                   onDelete={() => deleteHouse(house.id)}
                 />
@@ -135,6 +179,7 @@ export default function App() {
           </>
         )}
       </main>
+      </div>
 
       {showModal && (
         <AddHouseModal

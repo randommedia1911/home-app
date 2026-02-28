@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { calcTotalMonthly, fmt } from '../utils/mortgage'
+import { calcMonthlyPI, fmt } from '../utils/mortgage'
 import './AddHouseModal.css'
 
 const defaults = {
@@ -8,8 +8,7 @@ const defaults = {
   link: '',
   imageUrl: '',
   price: '',
-  downPaymentPct: 20,
-  interestRate: 6.875,
+  interestRate: 6,
   loanTermYears: 30,
   propertyTaxAnnual: '',
   hoaMonthly: '',
@@ -22,21 +21,36 @@ const defaults = {
 
 export default function AddHouseModal({ initial, onSave, onClose }) {
   const [form, setForm] = useState(initial ? { ...initial } : { ...defaults })
+  const [imgLoading, setImgLoading] = useState(false)
 
-  const preview = form.price && form.interestRate && form.loanTermYears
-    ? calcTotalMonthly({
-        price: Number(form.price),
-        downPaymentPct: Number(form.downPaymentPct) || 20,
-        interestRate: Number(form.interestRate),
-        loanTermYears: Number(form.loanTermYears),
-        propertyTaxAnnual: Number(form.propertyTaxAnnual) || 0,
-        hoaMonthly: Number(form.hoaMonthly) || 0,
-        insuranceMonthly: Number(form.insuranceMonthly) || 0,
-      })
-    : null
+  // Simple preview — just show total monthly based on a rough 20% down
+  const previewTotal = (() => {
+    const p = Number(form.price)
+    const r = Number(form.interestRate)
+    const t = Number(form.loanTermYears)
+    if (!p || !r || !t) return null
+    const loan = p * 0.8
+    const pi   = calcMonthlyPI(loan, r, t)
+    const tax  = (Number(form.propertyTaxAnnual) || 0) / 12
+    const hoa  = Number(form.hoaMonthly) || 0
+    const ins  = Number(form.insuranceMonthly) || 0
+    return { pi, tax, hoa, ins, total: pi + tax + hoa + ins }
+  })()
 
   function set(field, value) {
     setForm(f => ({ ...f, [field]: value }))
+  }
+
+  function handleImageFile(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    setImgLoading(true)
+    const reader = new FileReader()
+    reader.onload = ev => {
+      set('imageUrl', ev.target.result)  // base64 data URL — persists in localStorage
+      setImgLoading(false)
+    }
+    reader.readAsDataURL(file)
   }
 
   function handleSubmit(e) {
@@ -45,7 +59,6 @@ export default function AddHouseModal({ initial, onSave, onClose }) {
     onSave({
       ...form,
       price: Number(form.price),
-      downPaymentPct: Number(form.downPaymentPct),
       interestRate: Number(form.interestRate),
       loanTermYears: Number(form.loanTermYears),
       propertyTaxAnnual: Number(form.propertyTaxAnnual) || 0,
@@ -86,12 +99,31 @@ export default function AddHouseModal({ initial, onSave, onClose }) {
                 <input type="url" placeholder="https://www.redfin.com/..." value={form.link} onChange={e => set('link', e.target.value)} />
               </label>
             </div>
+
+            {/* Photo — file upload (stored as base64) or URL */}
             <div className="form-row">
-              <label>
-                Photo URL <span className="field-hint">(right-click any Redfin photo → Copy image address)</span>
-                <input type="url" placeholder="https://..." value={form.imageUrl} onChange={e => set('imageUrl', e.target.value)} />
-              </label>
+              <label>Photo</label>
+              <div className="photo-input-group">
+                <label className="photo-upload-btn">
+                  {imgLoading ? 'Loading…' : '📁 Upload from computer'}
+                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageFile} />
+                </label>
+                <span className="photo-or">or paste URL</span>
+                <input
+                  type="url" placeholder="https://..."
+                  value={form.imageUrl?.startsWith('data:') ? '' : (form.imageUrl || '')}
+                  onChange={e => set('imageUrl', e.target.value)}
+                  className="photo-url-input"
+                />
+              </div>
+              {form.imageUrl && (
+                <div className="photo-preview-wrap">
+                  <img src={form.imageUrl} alt="preview" className="photo-preview" />
+                  <button type="button" className="photo-clear" onClick={() => set('imageUrl', '')}>✕ Remove</button>
+                </div>
+              )}
             </div>
+
             <div className="form-row three-col">
               <label>
                 Beds
@@ -113,21 +145,7 @@ export default function AddHouseModal({ initial, onSave, onClose }) {
             <div className="form-row">
               <label>
                 Home Price ($) <span className="required">*</span>
-                <input type="number" required min="0" placeholder="650000" value={form.price} onChange={e => set('price', e.target.value)} />
-              </label>
-            </div>
-            <div className="form-row two-col">
-              <label>
-                Down Payment (%)
-                <input type="number" min="0" max="100" step="0.5" value={form.downPaymentPct} onChange={e => set('downPaymentPct', e.target.value)} />
-              </label>
-              <label>
-                Down Payment ($)
-                <input
-                  type="number" readOnly
-                  value={form.price ? Math.round(Number(form.price) * Number(form.downPaymentPct) / 100) : ''}
-                  className="computed"
-                />
+                <input type="number" required min="0" placeholder="400000" value={form.price} onChange={e => set('price', e.target.value)} />
               </label>
             </div>
             <div className="form-row two-col">
@@ -152,7 +170,7 @@ export default function AddHouseModal({ initial, onSave, onClose }) {
             <div className="form-row three-col">
               <label>
                 Property Tax (annual $)
-                <input type="number" min="0" placeholder="8000" value={form.propertyTaxAnnual} onChange={e => set('propertyTaxAnnual', e.target.value)} />
+                <input type="number" min="0" placeholder="5000" value={form.propertyTaxAnnual} onChange={e => set('propertyTaxAnnual', e.target.value)} />
               </label>
               <label>
                 HOA (monthly $)
@@ -172,15 +190,15 @@ export default function AddHouseModal({ initial, onSave, onClose }) {
             </label>
           </div>
 
-          {preview && (
+          {previewTotal && (
             <div className="modal-preview">
-              <div className="preview-label">Estimated Monthly Total</div>
-              <div className="preview-total">{fmt(preview.total)}</div>
+              <div className="preview-label">Est. Monthly (20% down)</div>
+              <div className="preview-total">{fmt(previewTotal.total)}</div>
               <div className="preview-breakdown">
-                <span>P&I {fmt(preview.pi)}</span>
-                {preview.tax > 0 && <span>Tax {fmt(preview.tax)}</span>}
-                {preview.hoa > 0 && <span>HOA {fmt(preview.hoa)}</span>}
-                {preview.insurance > 0 && <span>Insurance {fmt(preview.insurance)}</span>}
+                <span>P&I {fmt(previewTotal.pi)}</span>
+                {previewTotal.tax > 0 && <span>Tax {fmt(previewTotal.tax)}</span>}
+                {previewTotal.hoa > 0 && <span>HOA {fmt(previewTotal.hoa)}</span>}
+                {previewTotal.ins > 0 && <span>Insurance {fmt(previewTotal.ins)}</span>}
               </div>
             </div>
           )}
