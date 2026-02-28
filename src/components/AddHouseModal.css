@@ -1,0 +1,164 @@
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 16px;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 20px;
+  width: 100%;
+  max-width: 560px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 24px 16px;
+  border-bottom: 1px solid #f3f4f6;
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 1;
+  border-radius: 20px 20px 0 0;
+}
+.modal-header h2 { font-size: 1.15rem; font-weight: 700; color: #111827; margin: 0; }
+.modal-close {
+  background: #f3f4f6;
+  border: none;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s;
+}
+.modal-close:hover { background: #e5e7eb; }
+
+.modal-form { padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 24px; }
+
+.form-section { display: flex; flex-direction: column; gap: 12px; }
+.form-section h3 {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin: 0 0 4px;
+}
+
+.form-row { display: flex; flex-direction: column; }
+.form-row.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-row.three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #374151;
+}
+.required { color: #ef4444; }
+.field-hint { font-weight: 400; color: #9ca3af; font-size: 0.75rem; }
+
+input, select, textarea {
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 0.9rem;
+  color: #111827;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s;
+  font-family: inherit;
+}
+input:focus, select:focus, textarea:focus { border-color: #6366f1; }
+input.computed { background: #f9fafb; color: #6b7280; cursor: default; }
+textarea { resize: vertical; min-height: 60px; }
+
+.modal-preview {
+  background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%);
+  border-radius: 12px;
+  padding: 16px 20px;
+  text-align: center;
+  border: 1px solid #c4b5fd;
+}
+.preview-label { font-size: 0.75rem; font-weight: 700; color: #6d28d9; text-transform: uppercase; letter-spacing: 0.5px; }
+.preview-total { font-size: 2rem; font-weight: 800; color: #4c1d95; margin: 4px 0 6px; }
+.preview-breakdown { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; }
+.preview-breakdown span { font-size: 0.78rem; color: #5b21b6; background: rgba(255,255,255,0.6); padding: 2px 8px; border-radius: 100px; }
+
+.fetch-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.fetch-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.btn-fetch {
+  flex-shrink: 0;
+  background: #6366f1;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-family: inherit;
+  white-space: nowrap;
+  min-width: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn-fetch:hover:not(:disabled) { background: #4f46e5; }
+.btn-fetch:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-fetch.done { background: #10b981; }
+.btn-fetch.error { background: #ef4444; }
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.fetch-error {
+  font-size: 0.8rem;
+  color: #dc2626;
+  margin: 4px 0 0;
+}
+.fetch-success {
+  font-size: 0.8rem;
+  color: #059669;
+  margin: 4px 0 0;
+  font-weight: 500;
+}
+
+.modal-footer {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
