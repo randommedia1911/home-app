@@ -1,0 +1,58 @@
+// Bookmarklet — scrapes a Redfin listing and navigates to the app with data pre-filled.
+// Kept intentionally simple (ES5, no arrow functions, no window.open) for Safari compatibility.
+
+const APP_URL = 'https://randommedia1911.github.io/home-app/'
+
+export function getBookmarkletHref() {
+  // Use string concatenation so this file stays free of template-literal quirks
+  // when the bookmarklet code itself is a string.
+  var code = '(function(){'
+    + 'var t=document.body.innerText;'
+    + 'function ext(label){'
+    +   'var pos=0,i;'
+    +   'while((i=t.indexOf(label,pos))>-1){'
+    +     'var s=t.slice(i+label.length,i+label.length+80).replace(/\\s/g,"");'
+    +     'var m=s.match(/[$]?([\\d,]+)/);'
+    +     'if(m)return parseInt(m[1].replace(/,/g,""));'
+    +     'pos=i+1;'
+    +   '}'
+    +   'return null;'
+    + '}'
+    + 'function bef(label){'
+    +   'var pos=0,i;'
+    +   'while((i=t.indexOf(label,pos))>-1){'
+    +     'var s=t.slice(Math.max(0,i-40),i).replace(/\\s/g,"");'
+    +     'var m=s.match(/[$]?([\\d,]+)(?:\\/mo)?$/);'
+    +     'if(m)return parseInt(m[1].replace(/,/g,""));'
+    +     'pos=i+1;'
+    +   '}'
+    +   'return null;'
+    + '}'
+    + 'var price=ext("Home price");'
+    + 'var tax=ext("Property taxes")||ext("Property tax");'
+    + 'var hoa=ext("HOA dues")||ext("HOA fees")||bef("HOA Dues")||bef("HOA dues")||ext("HOA");'
+    + 'var ins=ext("Home insurance");'
+    + 'var bm1=t.match(/(\\d+)\\s+bd/);'
+    + 'var beds=bm1?parseInt(bm1[1]):null;'
+    + 'var bm2=t.match(/(\\d+(?:\\.\\d+)?)\\s+ba/);'
+    + 'var baths=bm2?parseFloat(bm2[1]):null;'
+    + 'var bm3=t.match(/([\\d,]+)\\s+sq/);'
+    + 'var sqft=bm3?parseInt(bm3[1].replace(/,/g,"")):null;'
+    + 'var el=document.querySelector(".street-address")||document.querySelector("h1");'
+    + 'var addr=el?el.innerText.split("\\n")[0].trim():"";'
+    + 'var imgUrl="";'
+    + 'var heroEl=document.querySelector("#MBImage img")||document.querySelector("[data-rf-test-id^=\\"MB-image-card\\"] img");'
+    + 'if(heroEl)imgUrl=heroEl.src;'
+    + 'if(!imgUrl){'
+    +   'var imgs=document.querySelectorAll("img");'
+    +   'for(var ii=0;ii<imgs.length;ii++){'
+    +     'var src=imgs[ii].src||"";'
+    +     'if(src.indexOf("cdn-redfin.com")>-1&&src.indexOf("bigphoto")>-1){imgUrl=src;break;}'
+    +   '}'
+    + '}'
+    + 'var data=JSON.stringify({address:addr,link:location.href,imageUrl:imgUrl,price:price,interestRate:6,loanTermYears:30,propertyTaxAnnual:tax?tax*12:null,hoaMonthly:hoa,insuranceMonthly:ins,beds:beds,baths:baths,sqft:sqft});'
+    + 'location.href="' + APP_URL + '?import="+encodeURIComponent(data);'
+    + '})();'
+
+  return 'javascript:' + code
+}

@@ -208,9 +208,31 @@ textarea { resize: vertical; min-height: 60px; }
 }
 .photo-clear:hover { background: rgba(220,38,38,0.8); }
 
+.save-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+
 .modal-footer {
   display: flex;
   gap: 10px;
   justify-content: flex-end;
   padding-top: 4px;
 }
+
+.btn-spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid rgba(255,255,255,0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: modal-spin 0.7s linear infinite;
+  vertical-align: middle;
+}
+@keyframes modal-spin { to { transform: rotate(360deg); } }

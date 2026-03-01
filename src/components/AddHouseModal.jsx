@@ -22,6 +22,8 @@ const defaults = {
 export default function AddHouseModal({ initial, onSave, onClose }) {
   const [form, setForm] = useState(initial ? { ...initial } : { ...defaults })
   const [imgLoading, setImgLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState(null)
 
   // Simple preview — just show total monthly based on a rough 20% down
   const previewTotal = (() => {
@@ -53,10 +55,13 @@ export default function AddHouseModal({ initial, onSave, onClose }) {
     reader.readAsDataURL(file)
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
-    if (!form.price) return
-    onSave({
+    if (!form.price || saving) return
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await onSave({
       ...form,
       price: Number(form.price),
       interestRate: Number(form.interestRate),
@@ -64,10 +69,15 @@ export default function AddHouseModal({ initial, onSave, onClose }) {
       propertyTaxAnnual: Number(form.propertyTaxAnnual) || 0,
       hoaMonthly: Number(form.hoaMonthly) || 0,
       insuranceMonthly: Number(form.insuranceMonthly) || 0,
-      beds: form.beds !== '' ? Number(form.beds) : '',
-      baths: form.baths !== '' ? Number(form.baths) : '',
-      sqft: form.sqft !== '' ? Number(form.sqft) : '',
-    })
+        beds: form.beds !== '' ? Number(form.beds) : '',
+        baths: form.baths !== '' ? Number(form.baths) : '',
+        sqft: form.sqft !== '' ? Number(form.sqft) : '',
+      })
+    } catch (err) {
+      setSaveError(err.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -89,8 +99,8 @@ export default function AddHouseModal({ initial, onSave, onClose }) {
             </div>
             <div className="form-row">
               <label>
-                Address
-                <input placeholder="123 Main St, City, CA" value={form.address} onChange={e => set('address', e.target.value)} />
+                Address <span className="required">*</span>
+                <input required placeholder="123 Main St, City, CA" value={form.address} onChange={e => set('address', e.target.value)} />
               </label>
             </div>
             <div className="form-row">
@@ -126,16 +136,16 @@ export default function AddHouseModal({ initial, onSave, onClose }) {
 
             <div className="form-row three-col">
               <label>
-                Beds
-                <input type="number" min="0" placeholder="2" value={form.beds} onChange={e => set('beds', e.target.value)} />
+                Beds <span className="required">*</span>
+                <input type="number" required min="0" placeholder="2" value={form.beds} onChange={e => set('beds', e.target.value)} />
               </label>
               <label>
-                Baths
-                <input type="number" min="0" step="0.5" placeholder="2" value={form.baths} onChange={e => set('baths', e.target.value)} />
+                Baths <span className="required">*</span>
+                <input type="number" required min="0" step="0.5" placeholder="2" value={form.baths} onChange={e => set('baths', e.target.value)} />
               </label>
               <label>
-                Sq Ft
-                <input type="number" min="0" placeholder="1200" value={form.sqft} onChange={e => set('sqft', e.target.value)} />
+                Sq Ft <span className="required">*</span>
+                <input type="number" required min="0" placeholder="1200" value={form.sqft} onChange={e => set('sqft', e.target.value)} />
               </label>
             </div>
           </div>
@@ -169,16 +179,16 @@ export default function AddHouseModal({ initial, onSave, onClose }) {
             <h3>Monthly Costs</h3>
             <div className="form-row three-col">
               <label>
-                Property Tax (annual $)
-                <input type="number" min="0" placeholder="5000" value={form.propertyTaxAnnual} onChange={e => set('propertyTaxAnnual', e.target.value)} />
+                Property Tax (annual $) <span className="required">*</span>
+                <input type="number" required min="0" placeholder="5000" value={form.propertyTaxAnnual} onChange={e => set('propertyTaxAnnual', e.target.value)} />
               </label>
               <label>
-                HOA (monthly $)
-                <input type="number" min="0" placeholder="0" value={form.hoaMonthly} onChange={e => set('hoaMonthly', e.target.value)} />
+                HOA (monthly $) <span className="required">*</span>
+                <input type="number" required min="0" placeholder="0" value={form.hoaMonthly} onChange={e => set('hoaMonthly', e.target.value)} />
               </label>
               <label>
-                Insurance (monthly $)
-                <input type="number" min="0" placeholder="120" value={form.insuranceMonthly} onChange={e => set('insuranceMonthly', e.target.value)} />
+                Insurance (monthly $) <span className="required">*</span>
+                <input type="number" required min="0" placeholder="120" value={form.insuranceMonthly} onChange={e => set('insuranceMonthly', e.target.value)} />
               </label>
             </div>
           </div>
@@ -203,10 +213,11 @@ export default function AddHouseModal({ initial, onSave, onClose }) {
             </div>
           )}
 
+          {saveError && <div className="save-error">{saveError}</div>}
           <div className="modal-footer">
             <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn-primary">
-              {initial ? 'Save Changes' : 'Add Home'}
+            <button type="submit" className="btn-primary" disabled={saving}>
+              {saving ? <span className="btn-spinner" /> : (initial ? 'Save Changes' : 'Add Home')}
             </button>
           </div>
         </form>

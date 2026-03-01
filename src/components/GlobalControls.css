@@ -6,6 +6,7 @@
 }
 
 .sc-section { padding: 4px 0 12px; }
+.sc-section-dimmed { opacity: 0.35; pointer-events: none; }
 
 .sc-section-title {
   font-size: 0.7rem;
@@ -86,9 +87,11 @@
     #e5e7eb 100%
   );
 }
-.d-slider    { --thumb-color: #7c3aed; }
-.a-slider    { --thumb-color: #be185d; }
-.sale-slider { --thumb-color: #059669; }
+.d-slider      { --thumb-color: #7c3aed; }
+.a-slider      { --thumb-color: #be185d; }
+.sale-slider   { --thumb-color: #059669; }
+.invest-slider { --thumb-color: #0369a1; }
+.retire-slider { --thumb-color: #d97706; }
 
 .sc-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
@@ -131,33 +134,61 @@
 }
 .sc-cc { font-size: 0.7rem; color: #d97706; }
 
-/* Year picker */
+/* Utilities */
 .util-grid {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   gap: 8px;
   margin-bottom: 8px;
 }
-.util-label {
+.util-col {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
+}
+.util-col-label {
   font-size: 0.72rem;
   font-weight: 600;
   color: #6b7280;
 }
 .util-input {
+  width: 100%;
   border: 1.5px solid #e5e7eb;
   border-radius: 7px;
-  padding: 6px 8px;
-  font-size: 0.82rem;
+  padding: 5px 6px;
+  font-size: 0.8rem;
   color: #111827;
-  width: 100%;
   outline: none;
   font-family: inherit;
   background: #fff;
+  box-sizing: border-box;
+  min-width: 0;
 }
 .util-input:focus { border-color: #6366f1; }
+.util-input-hoa {
+  background: #f9fafb;
+  color: #c4c9d1;
+  border-color: #f0f1f3;
+  cursor: not-allowed;
+}
+.hoa-check {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: #9ca3af;
+  cursor: pointer;
+  user-select: none;
+}
+.hoa-check input[type="checkbox"] {
+  width: 11px;
+  height: 11px;
+  margin: 0;
+  accent-color: #10b981;
+  cursor: pointer;
+}
+.hoa-check:has(input:checked) { color: #059669; }
 .util-total {
   font-size: 0.75rem;
   font-weight: 700;
@@ -184,3 +215,57 @@
 }
 .year-btn:hover { background: #e0e7ff; color: #4338ca; }
 .year-btn.active { background: #6366f1; color: #fff; border-color: #6366f1; }
+
+.retire-toggle {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.retire-btn {
+  flex: 1;
+  padding: 6px 4px;
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: #f9fafb;
+  color: #6b7280;
+  transition: all 0.12s;
+  font-family: inherit;
+  text-align: center;
+}
+.retire-btn:hover { border-color: #6366f1; color: #4338ca; background: #eef2ff; }
+.retire-btn.active { background: #6366f1; color: #fff; border-color: #6366f1; }
+
+.rent-inputs {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.rent-input-group { flex: 1; }
+.rent-input-label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #6b7280;
+  margin-bottom: 2px;
+}
+
+.sc-number-input {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-family: inherit;
+  color: #1f2937;
+  background: #fff;
+  margin-top: 4px;
+  box-sizing: border-box;
+}
+.sc-number-input:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99,102,241,0.15);
+}

@@ -25,6 +25,11 @@ body {
   justify-content: space-between;
   align-items: center;
 }
+.header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
 .header-inner h1 {
   font-size: 1.2rem;
   font-weight: 800;
@@ -83,6 +88,15 @@ body {
   text-align: center;
 }
 .empty-icon { font-size: 3rem; margin-bottom: 16px; }
+
+.loading-spinner {
+  width: 40px; height: 40px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 .empty-state h2 { font-size: 1.25rem; color: #111827; margin: 0 0 8px; }
 .empty-state p { color: #6b7280; margin: 0 0 24px; }
 
@@ -116,8 +130,81 @@ body {
 }
 .btn-secondary:hover { background: #e5e7eb; }
 
+/* Sidebar close button — hidden on desktop */
+.sidebar-close-btn {
+  display: none;
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: none;
+  border: none;
+  font-size: 1rem;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  z-index: 1;
+}
+.sidebar-close-btn:hover { background: #f3f4f6; color: #111827; }
+
+/* Burger button — hidden on desktop */
+.burger-btn {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  width: 36px;
+  height: 36px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  flex-shrink: 0;
+}
+.burger-btn span {
+  display: block;
+  height: 2px;
+  width: 22px;
+  background: #374151;
+  border-radius: 2px;
+  transition: background 0.15s;
+}
+.burger-btn:hover span { background: #111827; }
+
+/* Sidebar overlay backdrop (mobile) */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 39;
+}
+
 @media (max-width: 768px) {
-  .app-body { flex-direction: column; }
-  .sidebar { width: 100%; height: auto; position: static; border-right: none; border-bottom: 1px solid #e5e7eb; }
-  .main { padding: 16px; }
+  .burger-btn { display: flex; }
+  .sidebar-close-btn { display: block; }
+
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    z-index: 40;
+  }
+  .sidebar.sidebar-open {
+    transform: translateX(0);
+  }
+  .sidebar-overlay { display: block; }
+
+  .main {
+    margin-left: 0;
+    padding: 12px;
+  }
+
+  .header-inner {
+    padding: 10px 16px;
+  }
+  .header-inner h1 { font-size: 1rem; }
+  .subtitle { display: none; }
+
+  .btn-secondary { display: none; }
+  .btn-primary { padding: 8px 14px; font-size: 0.85rem; }
 }
