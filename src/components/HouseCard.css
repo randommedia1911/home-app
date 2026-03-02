@@ -668,6 +668,7 @@
   font-size: 0.78rem;
   font-weight: 700;
   color: #374151;
+  white-space: nowrap;
 }
 .retire-verdict {
   margin-top: 6px;
@@ -741,6 +742,51 @@
   flex: 0 0 auto;
   color: #9ca3af;
   font-weight: 600;
+}
+.retire-rental-net {
+  font-weight: 700;
+  margin-left: 2px;
+}
+.retire-overseas-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+.retire-overseas-header > span {
+  flex-shrink: 1;
+  min-width: 0;
+}
+.retire-rent-input-label {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #6b7280;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.retire-rent-input {
+  width: 64px;
+  border: 1.5px solid #d1d5db;
+  border-radius: 5px;
+  padding: 2px 4px;
+  font-size: 0.7rem;
+  font-family: inherit;
+  color: #111827;
+  background: #fff;
+  outline: none;
+}
+.retire-rent-input:focus { border-color: #6366f1; }
+.retire-rental-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  padding: 1px 0 4px 0;
+  font-size: 0.6rem;
+  color: #9ca3af;
 }
 .retire-snap-yr {
   font-size: 0.7rem;

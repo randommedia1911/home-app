@@ -13,6 +13,7 @@ const defaults = {
   propertyTaxAnnual: '',
   hoaMonthly: '',
   insuranceMonthly: 120,
+  monthlyRent: '',
   beds: '',
   baths: '',
   sqft: '',
@@ -69,6 +70,7 @@ export default function AddHouseModal({ initial, onSave, onClose }) {
       propertyTaxAnnual: Number(form.propertyTaxAnnual) || 0,
       hoaMonthly: Number(form.hoaMonthly) || 0,
       insuranceMonthly: Number(form.insuranceMonthly) || 0,
+      monthlyRent: Number(form.monthlyRent) || 0,
         beds: form.beds !== '' ? Number(form.beds) : '',
         baths: form.baths !== '' ? Number(form.baths) : '',
         sqft: form.sqft !== '' ? Number(form.sqft) : '',
@@ -189,6 +191,10 @@ export default function AddHouseModal({ initial, onSave, onClose }) {
               <label>
                 Insurance (monthly $) <span className="required">*</span>
                 <input type="number" required min="0" placeholder="120" value={form.insuranceMonthly} onChange={e => set('insuranceMonthly', e.target.value)} />
+              </label>
+              <label>
+                Rental price/mo ($) <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>optional</span>
+                <input type="number" min="0" placeholder="e.g. 3500" value={form.monthlyRent} onChange={e => set('monthlyRent', e.target.value)} />
               </label>
             </div>
           </div>

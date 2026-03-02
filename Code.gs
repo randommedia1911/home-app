@@ -13,7 +13,7 @@ const COLUMNS = [
   'price', 'interestRate', 'loanTermYears',
   'propertyTaxAnnual', 'hoaMonthly', 'insuranceMonthly',
   'beds', 'baths', 'sqft', 'notes',
-  'toured', 'skip',
+  'toured', 'skip', 'monthlyRent',
 ]
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

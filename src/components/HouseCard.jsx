@@ -19,7 +19,7 @@ function fvVariableAnnuity(yearlyPmts, annualRatePct) {
   return fv
 }
 
-export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDown, closingCostPct, aMonthlyAdj, equalizeYears, saleYear, appreciationPct, taxIncreasePct, hoaIncreasePct, dBudget, aBudget, investRate, retireMode, rent1BR, rent2BR, rentIncreaseRate, rentMoveEvery, rentMarketGrowth, rentParking, utilities, utilIncreaseRate, retireYear, inflationRate, currentAge, spendingCap, overseasCost, overseasSpendingCap, overseasRentIncrease, colRatio, snapshotsExpanded, onToggleSnapshots, onEdit, onDelete, onStatusChange }) {
+export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDown, closingCostPct, aMonthlyAdj, equalizeYears, saleYear, appreciationPct, taxIncreasePct, hoaIncreasePct, insuranceIncreasePct, dBudget, aBudget, investRate, retireMode, rentYield, rent1BR, rent2BR, rentUpgradeTo2BR, rentIncreaseRate, rentMoveEvery, rentMarketGrowth, rentParking, utilities, rentUtilities, utilIncreaseRate, retireYear, inflationRate, currentAge, spendingCap, overseasCost, overseasSpendingCap, overseasRentIncrease, usRentalIncrease, colRatio, snapshotsExpanded, onToggleSnapshots, onEdit, onDelete, onStatusChange }) {
   const [dOwnTarget, setDOwnTarget] = useState(50)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -57,7 +57,8 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
     const ph = {
       ...house,
       propertyTaxAnnual: house.propertyTaxAnnual * Math.pow(1 + (taxIncreasePct || 0) / 100, y),
-      hoaMonthly: house.hoaMonthly * Math.pow(1 + (hoaIncreasePct || 0) / 100, y),
+      hoaMonthly:        house.hoaMonthly        * Math.pow(1 + (hoaIncreasePct  || 0) / 100, y),
+      insuranceMonthly:  house.insuranceMonthly  * Math.pow(1 + (insuranceIncreasePct || 3) / 100, y),
     }
     const pBase = calcAMonthlyFromOwnership(ph, dDown, aDown, closingCostPct, dOwnTarget, projUtils)
     const pEff  = Math.max(0, pBase + aMonthlyAdj)
@@ -100,26 +101,47 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
   const showInvest = (dBudget > 0 || aBudget > 0)
 
   // Rent & invest comparison: if instead you rented an equivalent place and invested the difference
-  const baseRent = (house.beds || 0) <= 1 ? (rent1BR || 0) : (rent2BR || 0)
+  // Start in 1BR, upgrade to 2BR at rentUpgradeTo2BR year
+  const upgradeYear = rentUpgradeTo2BR || 3
   const totalBudget = (dBudget || 0) + (aBudget || 0)
   const dBudgetFrac = totalBudget > 0 ? (dBudget || 0) / totalBudget : 0.5
   const aBudgetFrac = 1 - dBudgetFrac
-  const utilsTotal2 = (utilities.water || 0) + (utilities.trash || 0) + (utilities.electricity || 0)
+  // Utilities for the rent path (separate from owning utilities)
+  const ru = rentUtilities || {}
+  const utilsTotal2 = (ru.water || 0) + (ru.trash || 0) + (ru.electricity || 0)
 
-  // calcRentAtYear: if rentMoveEvery > 0, reset to market rate every N years
+  // calcRentAtYear: starts at 1BR, upgrades to 2BR at upgradeYear
+  // if rentMoveEvery > 0, reset to market rate on each move
   function calcRentAtYear(y) {
-    if (!rentMoveEvery) return baseRent * Math.pow(1 + (rentIncreaseRate || 0) / 100, y)
-    const lease = Math.floor((y - 1) / rentMoveEvery)          // which lease period (0-indexed)
-    const yearInLease = ((y - 1) % rentMoveEvery) + 1          // year within current lease
-    const marketAtLeaseStart = baseRent * Math.pow(1 + (rentMarketGrowth || 0) / 100, lease * rentMoveEvery)
-    return marketAtLeaseStart * Math.pow(1 + (rentIncreaseRate || 0) / 100, yearInLease)
+    const base1BR = rent1BR || 0
+    const base2BR = rent2BR || 0
+    // Base at year 0 is 1BR; at upgradeYear it jumps to 2BR market rate at that time
+    const rateInc = (rentIncreaseRate || 0) / 100
+    const rateMarket = (rentMarketGrowth || 0) / 100
+    if (y < upgradeYear) {
+      // Still in 1BR phase
+      if (!rentMoveEvery) return base1BR * Math.pow(1 + rateInc, y)
+      const lease = Math.floor((y - 1) / rentMoveEvery)
+      const yearInLease = ((y - 1) % rentMoveEvery) + 1
+      const market = base1BR * Math.pow(1 + (rentMoveEvery ? rateMarket : rateInc), lease * rentMoveEvery)
+      return market * Math.pow(1 + rateInc, yearInLease)
+    } else {
+      // 2BR phase: base is 2BR market rate at upgradeYear, then grows from there
+      const base2BRAtUpgrade = base2BR * Math.pow(1 + (rentMoveEvery ? rateMarket : rateInc), upgradeYear)
+      const yFrom2BR = y - upgradeYear  // years since upgrade
+      if (!rentMoveEvery) return base2BRAtUpgrade * Math.pow(1 + rateInc, yFrom2BR)
+      const lease = Math.floor(yFrom2BR / rentMoveEvery)
+      const yearInLease = (yFrom2BR % rentMoveEvery) + 1
+      const market = base2BRAtUpgrade * Math.pow(1 + rateMarket, lease * rentMoveEvery)
+      return market * Math.pow(1 + rateInc, yearInLease)
+    }
   }
 
   const dRentYearlyInvest = []
   const aRentYearlyInvest = []
   for (let y = 1; y <= iYrs; y++) {
     const rentAtY = calcRentAtYear(y)
-    const utilsAtY = utilsTotal2 * Math.pow(1 + (utilIncreaseRate || 0) / 100, y)
+    const utilsAtY = utilsTotal2 * Math.pow(1 + (utilIncreaseRate || 0) / 100, y)  // rent utils grow same rate
     const totalRentCost = rentAtY + utilsAtY + (rentParking || 0)
     dRentYearlyInvest.push(Math.max(0, (dBudget || 0) - totalRentCost * dBudgetFrac))
     aRentYearlyInvest.push(Math.max(0, (aBudget || 0) - totalRentCost * aBudgetFrac))
@@ -158,6 +180,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
       ...house,
       propertyTaxAnnual: house.propertyTaxAnnual * Math.pow(1 + (taxIncreasePct || 0) / 100, y),
       hoaMonthly:        house.hoaMonthly        * Math.pow(1 + (hoaIncreasePct  || 0) / 100, y),
+      insuranceMonthly:  house.insuranceMonthly  * Math.pow(1 + (insuranceIncreasePct || 3) / 100, y),
     }
     if (y > house.loanTermYears) {
       // Loan paid off — only recurring non-PI costs remain
@@ -165,7 +188,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                           + (projUtils.trashInHoa ? 0 : (projUtils.trash || 0))
                           + (projUtils.electricity || 0)
       const nonPiMonthly = ph.propertyTaxAnnual / 12 + ph.hoaMonthly
-                         + (house.insuranceMonthly || 0) + utilsOnlyCost
+                         + (ph.insuranceMonthly || 0) + utilsOnlyCost
       retireLeftoverD.push(Math.max(0, (dBudget || 0) - nonPiMonthly * (dOwnTarget / 100)))
       retireLeftoverA.push(Math.max(0, (aBudget || 0) - nonPiMonthly * (1 - dOwnTarget / 100)))
     } else {
@@ -198,29 +221,53 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
   // = gross rent received − ownership costs (HOA + tax + insurance + mortgage if still active)
   // forceRent=true bypasses the rentOut/saleYear guard (used by overseas scenario)
   function calcNetRentalAtYear(y, forceRent = false) {
-    if (!forceRent && (!rentOut || y < saleYear)) return 0
+    return calcRentalBreakdownAtYear(y, forceRent).net
+  }
+
+  function calcRentalBreakdownAtYear(y, forceRent = false) {
+    const zero = { grossRent: 0, pi: 0, tax: 0, hoa: 0, insurance: 0, utils: 0, ownershipCost: 0, net: 0, mortgagePaidOff: false }
+    if (!forceRent && (!rentOut || y < saleYear)) return zero
     const uf = Math.pow(1 + (utilIncreaseRate || 0) / 100, y)
     const pu = { water: (utilities.water||0)*uf, trash: (utilities.trash||0)*uf, electricity: (utilities.electricity||0)*uf, waterInHoa: utilities.waterInHoa, trashInHoa: utilities.trashInHoa }
     const ph = {
       ...house,
       propertyTaxAnnual: house.propertyTaxAnnual * Math.pow(1 + (taxIncreasePct||0)/100, y),
       hoaMonthly:        house.hoaMonthly        * Math.pow(1 + (hoaIncreasePct ||0)/100, y),
+      insuranceMonthly:  house.insuranceMonthly  * Math.pow(1 + (insuranceIncreasePct || 3) / 100, y),
     }
-    let ownershipCost
-    if (y > house.loanTermYears) {
-      const u = (pu.waterInHoa?0:(pu.water||0)) + (pu.trashInHoa?0:(pu.trash||0)) + (pu.electricity||0)
-      ownershipCost = ph.propertyTaxAnnual/12 + ph.hoaMonthly + (house.insuranceMonthly||0) + u
+    // Gross rent: use per-card value if set, otherwise estimate from bed count + market rents
+    const baseRentEstimate = (house.monthlyRent || 0) > 0
+      ? house.monthlyRent
+      : house.beds <= 1
+        ? (rent1BR || 2100)
+        : house.beds <= 2
+          ? (rent2BR || 2600)
+          : (rent2BR || 2600) * (1 + (house.beds - 2) * 0.2)
+    const grossRent = baseRentEstimate * Math.pow(1 + (usRentalIncrease || 0) / 100, y)
+    const mortgagePaidOff = y > house.loanTermYears
+    let pi = 0, tax = 0, hoa = 0, insurance = 0, utils = 0
+    if (mortgagePaidOff) {
+      utils = (pu.waterInHoa?0:(pu.water||0)) + (pu.trashInHoa?0:(pu.trash||0)) + (pu.electricity||0)
+      tax = ph.propertyTaxAnnual / 12
+      hoa = ph.hoaMonthly
+      insurance = ph.insuranceMonthly || 0
     } else {
       const pBase = calcAMonthlyFromOwnership(ph, dDown, aDown, closingCostPct, dOwnTarget, pu)
       const p = calcTotalMonthly(ph, dDown, aDown, closingCostPct, Math.max(0, pBase+aMonthlyAdj), equalizeYears, pu)
-      ownershipCost = p.total
+      pi = p.pi; tax = p.tax; hoa = p.hoa; insurance = p.insurance; utils = p.utilsTotal
     }
-    return calcRentAtYear(y) - ownershipCost
+    const ownershipCost = pi + tax + hoa + insurance + utils
+    return { grossRent, pi, tax, hoa, insurance, utils, ownershipCost, net: grossRent - ownershipCost, mortgagePaidOff }
   }
 
   // Helper: combined housing cost at an arbitrary year y
   function calcCombinedHousingAtYear(y) {
-    if (sellAndMove && y >= saleYear) return 0
+    return calcHousingBreakdownAtYear(y).total
+  }
+
+  function calcHousingBreakdownAtYear(y) {
+    const zero = { pi: 0, tax: 0, hoa: 0, insurance: 0, utils: 0, total: 0, mortgagePaidOff: false }
+    if (sellAndMove && y >= saleYear) return zero
     const uf = Math.pow(1 + (utilIncreaseRate || 0) / 100, y)
     const pu = {
       water: (utilities.water || 0) * uf, trash: (utilities.trash || 0) * uf,
@@ -231,18 +278,25 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
       ...house,
       propertyTaxAnnual: house.propertyTaxAnnual * Math.pow(1 + (taxIncreasePct || 0) / 100, y),
       hoaMonthly:        house.hoaMonthly        * Math.pow(1 + (hoaIncreasePct  || 0) / 100, y),
+      insuranceMonthly:  house.insuranceMonthly  * Math.pow(1 + (insuranceIncreasePct || 3) / 100, y),
     }
-    if (y > house.loanTermYears) {
-      const utilsOnly = (pu.waterInHoa ? 0 : (pu.water || 0))
-                      + (pu.trashInHoa ? 0 : (pu.trash || 0))
-                      + (pu.electricity || 0)
-      return ph.propertyTaxAnnual / 12 + ph.hoaMonthly + (house.insuranceMonthly || 0) + utilsOnly
+    const mortgagePaidOff = y > house.loanTermYears
+    if (mortgagePaidOff) {
+      const utils = (pu.waterInHoa ? 0 : (pu.water || 0))
+                  + (pu.trashInHoa ? 0 : (pu.trash || 0))
+                  + (pu.electricity || 0)
+      const tax = ph.propertyTaxAnnual / 12
+      const hoa = ph.hoaMonthly
+      const insurance = ph.insuranceMonthly || 0
+      const total = tax + hoa + insurance + utils
+      return { pi: 0, tax, hoa, insurance, utils, total, mortgagePaidOff }
     }
     const pBase = calcAMonthlyFromOwnership(ph, dDown, aDown, closingCostPct, dOwnTarget, pu)
     const pEff  = Math.max(0, pBase + aMonthlyAdj)
     const p     = calcTotalMonthly(ph, dDown, aDown, closingCostPct, pEff, equalizeYears, pu)
     const inRepay = y <= equalizeYears
-    return (inRepay ? p.dDuringRepay : p.dAfterRepay) + (inRepay ? p.aNetDuring : p.aNetAfter)
+    const total = (inRepay ? p.dDuringRepay : p.dAfterRepay) + (inRepay ? p.aNetDuring : p.aNetAfter)
+    return { pi: p.pi, tax: p.tax, hoa: p.hoa, insurance: p.insurance, utils: p.utilsTotal, total, mortgagePaidOff }
   }
 
   const combinedHousingAtRY = calcCombinedHousingAtYear(rY)
@@ -260,14 +314,13 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
   for (let o = 0; o <= maxOffset; o += 3) snapOffsets.push(o)
   // Pool simulation: each year withdraw exactly (spendingCap + housing) inflation-adjusted,
   // offset by any rental income. Same target for all houses — fair comparison.
+  // "Stay in house" simulation — live in owned home, pay housing + spending, no rental income
   const simPoolByOffset = [combinedPortRetire]
   for (let n = 1; n <= maxOffset; n++) {
     const yr = rY + n
     const inflFactorYr = Math.pow(1 + (inflationRate || 3) / 100, yr)
     const housingYr = calcCombinedHousingAtYear(yr)
-    const netRentalYr = calcNetRentalAtYear(yr)
-    const targetAnnual = ((spendingCap || 0) * inflFactorYr + housingYr) * 12
-    const netFromPool = Math.max(0, targetAnnual - Math.max(0, netRentalYr * 12))
+    const netFromPool = ((spendingCap || 0) * inflFactorYr + housingYr) * 12
     simPoolByOffset.push(simPoolByOffset[n - 1] * (1 + gr) - netFromPool)
   }
   // Overseas pool simulation — always assumes: keep US house, rent it out
@@ -283,9 +336,22 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
     simPoolOverseas.push(simPoolOverseas[n - 1] * (1 + gr) - netFromPool)
   }
 
+  // Overseas pool simulation — rent path (no US house, no rental income)
+  const rentCombinedPoolAtRetire = dRentInvestFV + aRentInvestFV
+  const simPoolRentOverseas = [rentCombinedPoolAtRetire]
+  for (let n = 1; n <= maxOffset; n++) {
+    const yr = rY + n
+    const inflFactorYr = Math.pow(1 + (inflationRate || 3) / 100, yr)
+    const overseasRentFactor = Math.pow(1 + (overseasRentIncrease || 0) / 100, yr)
+    const overseasHousingNominal = (overseasCost || 0) * overseasRentFactor * 12
+    const targetAnnual = (overseasSpendingCap || 0) * inflFactorYr * 12 + overseasHousingNominal
+    simPoolRentOverseas.push(simPoolRentOverseas[n - 1] * (1 + gr) - targetAnnual)
+  }
+
   const retireHousingSnaps = snapOffsets.map(offset => {
     const y = rY + offset
-    const housing = calcCombinedHousingAtYear(y)
+    const housingBreakdown = calcHousingBreakdownAtYear(y)
+    const housing = housingBreakdown.total
     const netRental = calcNetRentalAtYear(y)
     const poolRemaining = simPoolByOffset[offset] ?? 0
     const inflFactorY = Math.pow(1 + (inflationRate || 3) / 100, y)
@@ -295,16 +361,22 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
     // Overseas scenario
     const overseasRentFactor = Math.pow(1 + (overseasRentIncrease || 0) / 100, y)
     const overseasHousingNominal = (overseasCost || 0) * overseasRentFactor
-    const overseasNetRental = calcNetRentalAtYear(y, true)
+    const rentalBreakdown = calcRentalBreakdownAtYear(y, true)
+    const overseasNetRental = rentalBreakdown.net
     const overseasAfterHousing = (overseasSpendingCap || 0) * inflFactorY
     const overseasAfterToday = overseasAfterHousing / inflFactorY
     const overseasUSEquiv = overseasAfterToday / ((colRatio || 40) / 100)
     const overseasPoolRemaining = simPoolOverseas[offset] ?? 0
     const overseasPoolReal = overseasPoolRemaining / inflFactorY
 
-    return { y, housing, netRental, poolRemaining, afterHousing,
+    // Rent-path overseas scenario (no rental income)
+    const rentOverseasPoolRemaining = simPoolRentOverseas[offset] ?? 0
+    const rentOverseasPoolReal = rentOverseasPoolRemaining / inflFactorY
+
+    return { y, housing, housingBreakdown, netRental, poolRemaining, afterHousing,
       overseasHousingNominal, overseasNetRental, overseasAfterHousing, overseasAfterToday,
-      overseasUSEquiv, overseasPoolRemaining, overseasPoolReal }
+      overseasUSEquiv, overseasPoolRemaining, overseasPoolReal, rentalBreakdown,
+      rentOverseasPoolRemaining, rentOverseasPoolReal }
   })
   const rentBaseRentYr1 = calcRentAtYear(1)
   const rentBaseRentFinal = calcRentAtYear(iYrs)
@@ -330,7 +402,8 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
     const ph = {
       ...house,
       propertyTaxAnnual: house.propertyTaxAnnual * Math.pow(1 + (taxIncreasePct || 0) / 100, y),
-      hoaMonthly: house.hoaMonthly * Math.pow(1 + (hoaIncreasePct || 0) / 100, y),
+      hoaMonthly:        house.hoaMonthly        * Math.pow(1 + (hoaIncreasePct  || 0) / 100, y),
+      insuranceMonthly:  house.insuranceMonthly  * Math.pow(1 + (insuranceIncreasePct || 3) / 100, y),
     }
     const pBase = calcAMonthlyFromOwnership(ph, dDown, aDown, closingCostPct, dOwnTarget, projUtils)
     const pEff = Math.max(0, pBase + aMonthlyAdj)
@@ -562,7 +635,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
         <div className="card-divider" />
 
         {/* Sale calculator */}
-        {retireMode === 'elsewhere' && <div className="sale-section">
+        {true && <div className="sale-section">
           <div className="sale-title">
             {saleYear === 30 ? 'At end of loan' : `If sold at Year ${saleYear}`}
           </div>
@@ -613,10 +686,10 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
         {showInvest && (
           <div className="invest-section">
             <div className="invest-title">
-              {retireMode === 'elsewhere' ? '✈ Sell & move' : retireMode === 'rent' ? '🏘 Rent & move' : '🏠 Stay'} — Yr {iYrs} ({investRate}% return)
+              🏠 Stay &amp; invest — Yr {iYrs} ({investRate}% return)
             </div>
             <div className="invest-sub">
-              Leftover invested monthly{sellAndMove ? ` + sale at Yr ${saleYear}` : rentOut ? ` · rent out from Yr ${rentMoveOutYear}` : ''}
+              Leftover invested monthly
             </div>
             <div className="invest-snapshots">
               <button className="snap-toggle-btn" onClick={onToggleSnapshots}>
@@ -684,7 +757,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
 
             <div className="rent-vs-buy">
               <div className="rent-vs-title">
-                vs. Rent &amp; Invest ({house.beds <= 1 ? '1BR' : '2BR'}, {fmt(rentBaseRentYr1 + (rentParking||0) + utilsTotal2)}→{fmt(rentBaseRentFinal + (rentParking||0) + utilsTotal2)}/mo{rentMoveEvery ? `, move every ${rentMoveEvery} yr` : ''})
+                vs. Rent &amp; Invest (1BR→2BR Yr {upgradeYear}, {fmt(rentBaseRentYr1 + (rentParking||0) + utilsTotal2)}→{fmt(rentBaseRentFinal + (rentParking||0) + utilsTotal2)}/mo{rentMoveEvery ? `, move every ${rentMoveEvery} yr` : ''})
               </div>
               <button className="snap-toggle-btn" onClick={onToggleSnapshots}>
                 {snapshotsExpanded ? '▾ Hide' : '▸ Show'} year-by-year
@@ -753,51 +826,69 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
               <span className="retire-label">Spending target</span>
               <span className="retire-val">{fmt(spendingCap || 0)}/mo today</span>
             </div>
-            <div className="retire-snap-header">Stay in US</div>
+            <div className="retire-snap-header">🏠 Stay in US</div>
             <div className="retire-housing-snaps">
               <div className="retire-snap-cols-header">
                 <span />
-                <span>{rentOut ? 'Rental net' : 'Housing'}</span>
+                <span>Housing</span>
                 <span>After housing</span>
                 <span>Pool left</span>
               </div>
-              {retireHousingSnaps.map(({ y, housing, netRental, poolRemaining, afterHousing }) => {
+              {retireHousingSnaps.map(({ y, housing, housingBreakdown, netRental, poolRemaining, afterHousing }) => {
                 const inflFactorY = Math.pow(1 + (inflationRate || 3) / 100, y)
                 const poolReal = poolRemaining / inflFactorY
                 const afterHousingReal = afterHousing / inflFactorY
                 return (
-                  <div key={y} className="retire-housing-snap-row">
-                    <span className="retire-snap-yr">Age {(currentAge || 33) + y}</span>
-                    <span className="retire-val">
-                      {rentOut
-                        ? <span className={netRental >= 0 ? 'retire-surplus' : 'retire-pool-empty'}>
-                            {netRental >= 0 ? `+${fmt(netRental)}/mo` : `${fmt(netRental)}/mo`}
-                          </span>
-                        : `${fmt(housing)}/mo`
-                      }
-                    </span>
-                    <span className={`retire-pool-stack ${afterHousing < 0 ? 'retire-pool-empty' : ''}`}>
-                      <span className={`retire-val ${afterHousing < 0 ? 'retire-pool-empty' : 'retire-surplus'}`}>
-                        {afterHousing >= 0 ? `+${fmt(afterHousing)}/mo` : `${fmt(afterHousing)}/mo`}
+                  <div key={y} className="retire-overseas-group">
+                    <div className="retire-housing-snap-row">
+                      <span className="retire-snap-yr">Age {(currentAge || 33) + y}</span>
+                      <span className="retire-val">-{fmt(housing)}/mo</span>
+                      <span className="retire-pool-stack">
+                        <span className="retire-val">-{fmt(afterHousing)}/mo</span>
+                        <span className="retire-pool-real">-{fmt(afterHousingReal)} today</span>
                       </span>
-                      <span className="retire-pool-real">
-                        {afterHousingReal >= 0 ? `+${fmt(afterHousingReal)}` : fmt(afterHousingReal)} today
+                      <span className="retire-pool-stack">
+                        {poolRemaining >= 0 ? (
+                          <>
+                            <span className="retire-val">{fmt(poolRemaining)}</span>
+                            <span className="retire-pool-real">{fmt(poolReal)} today</span>
+                          </>
+                        ) : <span className="retire-pool-empty">Depleted</span>}
                       </span>
-                    </span>
-                    <span className="retire-pool-stack">
-                      {poolRemaining >= 0 ? (
-                        <>
-                          <span className="retire-val">{fmt(poolRemaining)}</span>
-                          <span className="retire-pool-real">{fmt(poolReal)} today</span>
-                        </>
-                      ) : <span className="retire-pool-empty">Depleted</span>}
-                    </span>
+                    </div>
+                    <div className="retire-rental-breakdown">
+                      {housingBreakdown.pi > 0 && <span>−{fmt(housingBreakdown.pi)} P&amp;I</span>}
+                      {housingBreakdown.tax > 0 && <span>−{fmt(housingBreakdown.tax)} tax</span>}
+                      {housingBreakdown.hoa > 0 && <span>−{fmt(housingBreakdown.hoa)} HOA</span>}
+                      {housingBreakdown.insurance > 0 && <span>−{fmt(housingBreakdown.insurance)} ins</span>}
+                      {housingBreakdown.utils > 0 && <span>−{fmt(housingBreakdown.utils)} utils</span>}
+                      {housingBreakdown.mortgagePaidOff && <span style={{color:'#10b981'}}>✓ paid off</span>}
+                    </div>
                   </div>
                 )
               })}
             </div>
 
-            <div className="retire-snap-header" style={{ marginTop: 8 }}>🌏 Overseas · {fmt(overseasSpendingCap || 0)}/mo spend today</div>
+            <div className="retire-snap-header retire-overseas-header" style={{ marginTop: 8 }}>
+              <span>🌏 Overseas · {fmt(overseasSpendingCap || 0)}/mo spend today</span>
+              <label className="retire-rent-input-label">
+                🏠 rent out $
+                <input
+                  type="number" min={0} step={100}
+                  value={house.monthlyRent || ''}
+                  placeholder={fmt(Math.round(
+                    house.beds <= 1
+                      ? (rent1BR || 2100)
+                      : house.beds <= 2
+                        ? (rent2BR || 2600)
+                        : (rent2BR || 2600) * (1 + (house.beds - 2) * 0.2)
+                  ))}
+                  className="retire-rent-input"
+                  onChange={e => onStatusChange({ monthlyRent: Number(e.target.value) || 0 })}
+                />
+                /mo
+              </label>
+            </div>
             <div className="retire-housing-snaps">
               <div className="retire-snap-cols-header">
                 <span />
@@ -807,7 +898,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
               </div>
               {retireHousingSnaps.map(({ y,
                 overseasHousingNominal, overseasNetRental, overseasAfterHousing,
-                overseasPoolRemaining, overseasPoolReal }) => {
+                overseasPoolRemaining, overseasPoolReal, rentalBreakdown }) => {
                 const inflFactorY = Math.pow(1 + (inflationRate || 3) / 100, y)
                 const overseasHousingToday = overseasHousingNominal / inflFactorY
                 return (
@@ -816,12 +907,12 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                     <div className="retire-housing-snap-row">
                       <span className="retire-snap-yr">Age {(currentAge || 33) + y}</span>
                       <span className="retire-pool-stack">
-                        <span className="retire-val">{fmt(overseasHousingNominal)}/mo</span>
-                        <span className="retire-pool-real">{fmt(overseasHousingToday)} today</span>
+                        <span className="retire-val">-{fmt(overseasHousingNominal)}/mo</span>
+                        <span className="retire-pool-real">-{fmt(overseasHousingToday)} today</span>
                       </span>
                       <span className="retire-pool-stack">
-                        <span className="retire-val retire-surplus">+{fmt(overseasAfterHousing)}/mo</span>
-                        <span className="retire-pool-real">+{fmt(overseasSpendingCap || 0)} today</span>
+                        <span className="retire-val">-{fmt(overseasAfterHousing)}/mo</span>
+                        <span className="retire-pool-real">-{fmt(overseasSpendingCap || 0)} today</span>
                       </span>
                       <span className="retire-pool-stack">
                         {overseasPoolRemaining >= 0 ? (
@@ -832,13 +923,20 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                         ) : <span className="retire-pool-empty">Depleted</span>}
                       </span>
                     </div>
-                    {/* Sub-row: US rental income */}
+                    {/* Sub-row: US rental breakdown */}
                     <div className="retire-rental-subrow">
                       <span className="retire-rental-label">🏠 US rental</span>
-                      <span className={overseasNetRental >= 0 ? 'retire-surplus' : 'retire-pool-empty'}>
-                        {overseasNetRental >= 0 ? `+${fmt(overseasNetRental)}/mo` : `${fmt(overseasNetRental)}/mo`}
+                      <span className="retire-surplus">rent {fmt(rentalBreakdown.grossRent)}/mo</span>
+                      <span className={`retire-rental-net ${overseasNetRental >= 0 ? 'retire-surplus' : 'retire-pool-empty'}`}>
+                        = {overseasNetRental >= 0 ? `+${fmt(overseasNetRental)}` : fmt(overseasNetRental)} net
                       </span>
-                      <span className="retire-pool-real">net after costs</span>
+                    </div>
+                    <div className="retire-rental-breakdown">
+                      {rentalBreakdown.pi > 0 && <span>−{fmt(rentalBreakdown.pi)} P&amp;I</span>}
+                      <span>−{fmt(rentalBreakdown.tax)} tax</span>
+                      {rentalBreakdown.hoa > 0 && <span>−{fmt(rentalBreakdown.hoa)} HOA</span>}
+                      {rentalBreakdown.insurance > 0 && <span>−{fmt(rentalBreakdown.insurance)} ins</span>}
+                      {rentalBreakdown.utils > 0 && <span>−{fmt(rentalBreakdown.utils)} utils</span>}
                     </div>
                   </div>
                 )
@@ -850,7 +948,51 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                 ? <div className="retire-note">Mortgage paid off at Yr {house.loanTermYears} — no P&I, only HOA + tax + utils</div>
                 : null
             }
-            <div className="retire-note">Overseas assumes US house rented out</div>
+            <div className="retire-note">🌏 Overseas (buy path) assumes US house rented out</div>
+
+            {/* Rent-path overseas section */}
+            <div className="retire-snap-header" style={{ marginTop: 10 }}>
+              🌏 Overseas · rent path · {fmt(overseasSpendingCap || 0)}/mo spend today
+            </div>
+            <div className="retire-combined-row">
+              <span className="retire-label">Rent path pool at Yr {rY}</span>
+              <span className="retire-val">{fmt(rentCombinedPoolAtRetire)}</span>
+            </div>
+            <div className="retire-housing-snaps">
+              <div className="retire-snap-cols-header">
+                <span />
+                <span>Housing</span>
+                <span>From pool · today</span>
+                <span>Pool left</span>
+              </div>
+              {retireHousingSnaps.map(({ y, overseasHousingNominal, overseasAfterHousing,
+                rentOverseasPoolRemaining, rentOverseasPoolReal }) => {
+                const inflFactorY = Math.pow(1 + (inflationRate || 3) / 100, y)
+                const overseasHousingToday = overseasHousingNominal / inflFactorY
+                return (
+                  <div key={y} className="retire-housing-snap-row">
+                    <span className="retire-snap-yr">Age {(currentAge || 33) + y}</span>
+                    <span className="retire-pool-stack">
+                      <span className="retire-val">-{fmt(overseasHousingNominal)}/mo</span>
+                      <span className="retire-pool-real">-{fmt(overseasHousingToday)} today</span>
+                    </span>
+                    <span className="retire-pool-stack">
+                      <span className="retire-val">-{fmt(overseasAfterHousing)}/mo</span>
+                      <span className="retire-pool-real">-{fmt(overseasSpendingCap || 0)} today</span>
+                    </span>
+                    <span className="retire-pool-stack">
+                      {rentOverseasPoolRemaining >= 0 ? (
+                        <>
+                          <span className="retire-val">{fmt(rentOverseasPoolRemaining)}</span>
+                          <span className="retire-pool-real">{fmt(rentOverseasPoolReal)} today</span>
+                        </>
+                      ) : <span className="retire-pool-empty">Depleted</span>}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="retire-note">No rental income — renting in US, moving overseas</div>
           </div>
         )}
 
