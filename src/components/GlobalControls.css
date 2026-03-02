@@ -1,20 +1,47 @@
 .sidebar-controls {
-  padding: 16px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 10px;
 }
 
-.sc-section { padding: 4px 0 12px; }
+/* Group = the outer labeled box */
+.sc-group {
+  background: #fff;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 12px;
+}
+.sc-group--green  { border-color: #10b981; }
+.sc-group--blue   { border-color: #3b82f6; }
+.sc-group--orange { border-color: #f59e0b; }
+.sc-group--purple { border-color: #8b5cf6; }
+.sc-group--teal   { border-color: #06b6d4; }
+
+.sc-group-title {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #374151;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding-bottom: 10px;
+  margin-bottom: 14px;
+  border-bottom: 2px solid #f3f4f6;
+}
+
+/* Section = sub-block inside a group */
+.sc-section { padding: 0; }
 .sc-section-dimmed { opacity: 0.35; pointer-events: none; }
 
 .sc-section-title {
-  font-size: 0.7rem;
-  font-weight: 800;
-  color: #6b7280;
+  font-size: 0.67rem;
+  font-weight: 700;
+  color: #9ca3af;
   text-transform: uppercase;
-  letter-spacing: 0.6px;
-  margin-bottom: 12px;
+  letter-spacing: 0.5px;
+  margin: 14px 0 8px;
+  padding-top: 12px;
+  border-top: 1px solid #f3f4f6;
 }
 
 .sc-label-sm {
@@ -23,11 +50,7 @@
   margin-bottom: 8px;
 }
 
-.sc-divider {
-  height: 1px;
-  background: #f3f4f6;
-  margin: 4px 0 16px;
-}
+.sc-divider { display: none; }
 
 .sc-row {
   display: flex;

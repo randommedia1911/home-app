@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { calcTotalMonthly, calcSaleProceeds, calcAMonthlyFromOwnership, fmt } from '../utils/mortgage'
+import { calcTotalMonthly, calcSaleProceeds, calcAMonthlyFromOwnership, calcRemainingBalance, fmt } from '../utils/mortgage'
 import './HouseCard.css'
 
 // FV of variable annual monthly contributions, each grown to end of investYears
@@ -19,7 +19,7 @@ function fvVariableAnnuity(yearlyPmts, annualRatePct) {
   return fv
 }
 
-export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDown, closingCostPct, aMonthlyAdj, equalizeYears, saleYear, appreciationPct, taxIncreasePct, hoaIncreasePct, insuranceIncreasePct, dBudget, aBudget, investRate, retireMode, rentYield, rent1BR, rent2BR, rentUpgradeTo2BR, rentIncreaseRate, rentMoveEvery, rentMarketGrowth, rentParking, utilities, rentUtilities, utilIncreaseRate, retireYear, inflationRate, currentAge, spendingCap, overseasCost, overseasSpendingCap, overseasRentIncrease, usRentalIncrease, colRatio, snapshotsExpanded, onToggleSnapshots, onEdit, onDelete, onStatusChange }) {
+export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDown, closingCostPct, aMonthlyAdj, equalizeYears, saleYear, appreciationPct, taxIncreasePct, hoaIncreasePct, insuranceIncreasePct, refiYear, refiRate, refiTermYears, dBudget, aBudget, investRate, retireMode, rentYield, rent1BR, rent2BR, rentUpgradeTo2BR, rentIncreaseRate, rentMoveEvery, rentMarketGrowth, rentParking, utilities, rentUtilities, utilIncreaseRate, retireYear, inflationRate, currentAge, spendingCap, overseasCost, overseasSpendingCap, overseasRentIncrease, usRentalIncrease, colRatio, snapshotsExpanded, onToggleSnapshots, onEdit, onDelete, onStatusChange }) {
   const [dOwnTarget, setDOwnTarget] = useState(50)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -43,6 +43,30 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
   const appreciatedPrice = house.price * Math.pow(1 + (appreciationPct || 0) / 100, saleYear)
   const sale = calcSaleProceeds(house, dDown, aDown, closingCostPct, effectiveAMonthly, equalizeYears, saleYear, appreciatedPrice, utilities)
 
+  // Refinance helpers — must be defined before any per-year loops
+  const hasRefi = (refiYear || 0) > 0
+  const originalLoanAmount = Math.max(0, house.price - Math.max(0, (dDown + aDown) - house.price * (closingCostPct / 100)))
+  const refiLoanAmount = hasRefi
+    ? calcRemainingBalance(originalLoanAmount, house.interestRate, house.loanTermYears, (refiYear || 0) * 12)
+    : 0
+  // refiTermYears === 0 means "remaining term" = original loan term minus refi year
+  const resolvedRefiTerm = (refiTermYears === 0)
+    ? Math.max(1, house.loanTermYears - (refiYear || 0))
+    : (refiTermYears || 30)
+  const effectivePaidOffYear = hasRefi
+    ? (refiYear || 0) + resolvedRefiTerm
+    : house.loanTermYears
+  function applyRefi(ph, y) {
+    if (!hasRefi || y < (refiYear || 0)) return ph
+    const actualDownPmt = Math.max(0, (dDown + aDown) - house.price * (closingCostPct / 100))
+    return {
+      ...ph,
+      price: refiLoanAmount + actualDownPmt,
+      interestRate: refiRate || 5,
+      loanTermYears: resolvedRefiTerm,
+    }
+  }
+
   // Investment savings: year-by-year leftover with compounding HOA/tax, invested at investRate%
   const iYrs = retireYear || 30
   const dYearlyLeftover = []
@@ -54,18 +78,23 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
       trash: (utilities.trash || 0) * utilFactor,
       electricity: (utilities.electricity || 0) * utilFactor,
     }
-    const ph = {
+    const phBase = {
       ...house,
       propertyTaxAnnual: house.propertyTaxAnnual * Math.pow(1 + (taxIncreasePct || 0) / 100, y),
       hoaMonthly:        house.hoaMonthly        * Math.pow(1 + (hoaIncreasePct  || 0) / 100, y),
       insuranceMonthly:  house.insuranceMonthly  * Math.pow(1 + (insuranceIncreasePct || 3) / 100, y),
     }
+    const ph = y > effectivePaidOffYear ? phBase : applyRefi(phBase, y)
     const pBase = calcAMonthlyFromOwnership(ph, dDown, aDown, closingCostPct, dOwnTarget, projUtils)
     const pEff  = Math.max(0, pBase + aMonthlyAdj)
     const p     = calcTotalMonthly(ph, dDown, aDown, closingCostPct, pEff, equalizeYears, projUtils)
     const inRepay = y <= equalizeYears
-    const dCost = inRepay ? p.dDuringRepay : p.dAfterRepay
-    const aCost = inRepay ? p.aNetDuring   : p.aNetAfter
+    const dCost = y > effectivePaidOffYear
+      ? (p.tax + p.hoa + p.insurance + p.utilsTotal) * (dOwnTarget / 100)
+      : (inRepay ? p.dDuringRepay : p.dAfterRepay)
+    const aCost = y > effectivePaidOffYear
+      ? (p.tax + p.hoa + p.insurance + p.utilsTotal) * (1 - dOwnTarget / 100)
+      : (inRepay ? p.aNetDuring   : p.aNetAfter)
     dYearlyLeftover.push(Math.max(0, (dBudget || 0) - dCost))
     aYearlyLeftover.push(Math.max(0, (aBudget || 0) - aCost))
   }
@@ -108,7 +137,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
   const aBudgetFrac = 1 - dBudgetFrac
   // Utilities for the rent path (separate from owning utilities)
   const ru = rentUtilities || {}
-  const utilsTotal2 = (ru.water || 0) + (ru.trash || 0) + (ru.electricity || 0)
+  const utilsTotal2 = (ru.water || 0) + (ru.trash || 0) + (ru.sewer || 0) + (ru.electricity || 0)
 
   // calcRentAtYear: starts at 1BR, upgrades to 2BR at upgradeYear
   // if rentMoveEvery > 0, reset to market rate on each move
@@ -176,13 +205,14 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
       waterInHoa:  utilities.waterInHoa,
       trashInHoa:  utilities.trashInHoa,
     }
-    const ph = {
+    const phBase = {
       ...house,
       propertyTaxAnnual: house.propertyTaxAnnual * Math.pow(1 + (taxIncreasePct || 0) / 100, y),
       hoaMonthly:        house.hoaMonthly        * Math.pow(1 + (hoaIncreasePct  || 0) / 100, y),
       insuranceMonthly:  house.insuranceMonthly  * Math.pow(1 + (insuranceIncreasePct || 3) / 100, y),
     }
-    if (y > house.loanTermYears) {
+    const ph = applyRefi(phBase, y)
+    if (y > effectivePaidOffYear) {
       // Loan paid off — only recurring non-PI costs remain
       const utilsOnlyCost = (projUtils.waterInHoa ? 0 : (projUtils.water || 0))
                           + (projUtils.trashInHoa ? 0 : (projUtils.trash || 0))
@@ -229,12 +259,13 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
     if (!forceRent && (!rentOut || y < saleYear)) return zero
     const uf = Math.pow(1 + (utilIncreaseRate || 0) / 100, y)
     const pu = { water: (utilities.water||0)*uf, trash: (utilities.trash||0)*uf, electricity: (utilities.electricity||0)*uf, waterInHoa: utilities.waterInHoa, trashInHoa: utilities.trashInHoa }
-    const ph = {
+    const phBase = {
       ...house,
       propertyTaxAnnual: house.propertyTaxAnnual * Math.pow(1 + (taxIncreasePct||0)/100, y),
       hoaMonthly:        house.hoaMonthly        * Math.pow(1 + (hoaIncreasePct ||0)/100, y),
       insuranceMonthly:  house.insuranceMonthly  * Math.pow(1 + (insuranceIncreasePct || 3) / 100, y),
     }
+    const ph = applyRefi(phBase, y)
     // Gross rent: use per-card value if set, otherwise estimate from bed count + market rents
     const baseRentEstimate = (house.monthlyRent || 0) > 0
       ? house.monthlyRent
@@ -244,7 +275,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
           ? (rent2BR || 2600)
           : (rent2BR || 2600) * (1 + (house.beds - 2) * 0.2)
     const grossRent = baseRentEstimate * Math.pow(1 + (usRentalIncrease || 0) / 100, y)
-    const mortgagePaidOff = y > house.loanTermYears
+    const mortgagePaidOff = y > effectivePaidOffYear
     let pi = 0, tax = 0, hoa = 0, insurance = 0, utils = 0
     if (mortgagePaidOff) {
       utils = (pu.waterInHoa?0:(pu.water||0)) + (pu.trashInHoa?0:(pu.trash||0)) + (pu.electricity||0)
@@ -274,13 +305,14 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
       electricity: (utilities.electricity || 0) * uf,
       waterInHoa: utilities.waterInHoa, trashInHoa: utilities.trashInHoa,
     }
-    const ph = {
+    const phBase = {
       ...house,
       propertyTaxAnnual: house.propertyTaxAnnual * Math.pow(1 + (taxIncreasePct || 0) / 100, y),
       hoaMonthly:        house.hoaMonthly        * Math.pow(1 + (hoaIncreasePct  || 0) / 100, y),
       insuranceMonthly:  house.insuranceMonthly  * Math.pow(1 + (insuranceIncreasePct || 3) / 100, y),
     }
-    const mortgagePaidOff = y > house.loanTermYears
+    const ph = applyRefi(phBase, y)
+    const mortgagePaidOff = y > effectivePaidOffYear
     if (mortgagePaidOff) {
       const utils = (pu.waterInHoa ? 0 : (pu.water || 0))
                   + (pu.trashInHoa ? 0 : (pu.trash || 0))
@@ -399,18 +431,40 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
       trash: (utilities.trash || 0) * utilFactor,
       electricity: (utilities.electricity || 0) * utilFactor,
     }
-    const ph = {
+    const phBase = {
       ...house,
       propertyTaxAnnual: house.propertyTaxAnnual * Math.pow(1 + (taxIncreasePct || 0) / 100, y),
       hoaMonthly:        house.hoaMonthly        * Math.pow(1 + (hoaIncreasePct  || 0) / 100, y),
       insuranceMonthly:  house.insuranceMonthly  * Math.pow(1 + (insuranceIncreasePct || 3) / 100, y),
     }
+    const ph = applyRefi(phBase, y)
     const pBase = calcAMonthlyFromOwnership(ph, dDown, aDown, closingCostPct, dOwnTarget, projUtils)
     const pEff = Math.max(0, pBase + aMonthlyAdj)
     const p = calcTotalMonthly(ph, dDown, aDown, closingCostPct, pEff, equalizeYears, projUtils)
     const inRepay = y <= equalizeYears
     return { y, dNet: inRepay ? p.dDuringRepay : p.dAfterRepay, aNet: inRepay ? p.aNetDuring : p.aNetAfter, total: p.total }
   }) : []
+
+  // Post-refi monthly cost snapshot (at refiYear, with compounded tax/HOA/ins)
+  const refiMonthly = (() => {
+    if (!hasRefi) return null
+    const uf = Math.pow(1 + (utilIncreaseRate || 0) / 100, refiYear)
+    const refiUtils = {
+      water: (utilities.water || 0) * uf, trash: (utilities.trash || 0) * uf,
+      electricity: (utilities.electricity || 0) * uf,
+      waterInHoa: utilities.waterInHoa, trashInHoa: utilities.trashInHoa,
+    }
+    const refiPhBase = {
+      ...house,
+      propertyTaxAnnual: house.propertyTaxAnnual * Math.pow(1 + (taxIncreasePct || 0) / 100, refiYear),
+      hoaMonthly:        house.hoaMonthly        * Math.pow(1 + (hoaIncreasePct  || 0) / 100, refiYear),
+      insuranceMonthly:  house.insuranceMonthly  * Math.pow(1 + (insuranceIncreasePct || 3) / 100, refiYear),
+    }
+    const refiPh = applyRefi(refiPhBase, refiYear)
+    const pBase = calcAMonthlyFromOwnership(refiPh, dDown, aDown, closingCostPct, dOwnTarget, refiUtils)
+    const p = calcTotalMonthly(refiPh, dDown, aDown, closingCostPct, Math.max(0, pBase + aMonthlyAdj), equalizeYears, refiUtils)
+    return p
+  })()
 
   const breakdownItems = [
     { label: 'Principal & Interest', value: pi,         color: '#6366f1' },
@@ -502,6 +556,34 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
             </div>
           </div>
         </div>
+
+        {/* After refi */}
+        {hasRefi && refiMonthly && <>
+        <div className="split-phase-label" style={{ background: '#eff6ff', borderColor: '#93c5fd' }}>
+          🔄 After refi <span className="phase-tag" style={{ background: '#3b82f6' }}>Yr {refiYear}+ · {refiRate}%</span>
+          <span style={{ fontSize: '0.65rem', color: '#6b7280', marginLeft: 6 }}>
+            new P&I {fmt(refiMonthly.pi)}/mo · saves {fmt(pi - refiMonthly.pi)}/mo
+          </span>
+        </div>
+        <div className="split-section">
+          <div className="split-card d-card-after">
+            <div className="split-avatar d-avatar">D</div>
+            <div className="split-info">
+              <div className="split-name">Net Monthly</div>
+              <div className="split-amount after-amount">{fmt(refiYear <= equalizeYears ? refiMonthly.dDuringRepay : refiMonthly.dAfterRepay)}</div>
+              <div className="split-sub">at Yr {refiYear} with compounded costs</div>
+            </div>
+          </div>
+          <div className="split-card a-card-after">
+            <div className="split-avatar a-avatar">A</div>
+            <div className="split-info">
+              <div className="split-name">Net Monthly</div>
+              <div className="split-amount after-amount">{fmt(refiYear <= equalizeYears ? refiMonthly.aNetDuring : refiMonthly.aNetAfter)}</div>
+              <div className="split-sub">at Yr {refiYear} with compounded costs</div>
+            </div>
+          </div>
+        </div>
+        </>}
 
         {/* After repayment — only shown if repayment ends before loan does AND before sale */}
         {equalizeYears < house.loanTermYears && saleYear > equalizeYears && <>
@@ -634,8 +716,8 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
 
         <div className="card-divider" />
 
-        {/* Sale calculator */}
-        {true && <div className="sale-section">
+        {/* Sale calculator — hidden (no sell plan) */}
+        {false && <div className="sale-section">
           <div className="sale-title">
             {saleYear === 30 ? 'At end of loan' : `If sold at Year ${saleYear}`}
           </div>
@@ -944,9 +1026,11 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
             </div>
             {(sellAndMove && rY >= saleYear)
               ? <div className="retire-note">House sold at Yr {saleYear} — no housing cost, sale proceeds in portfolio</div>
-              : rY > house.loanTermYears
-                ? <div className="retire-note">Mortgage paid off at Yr {house.loanTermYears} — no P&I, only HOA + tax + utils</div>
-                : null
+              : rY > effectivePaidOffYear
+                ? <div className="retire-note">Mortgage paid off at Yr {effectivePaidOffYear} — no P&I, only HOA + tax + utils</div>
+                : hasRefi
+                  ? <div className="retire-note">🔄 Refi at Yr {refiYear} → {refiRate}% · {resolvedRefiTerm} yr{refiTermYears === 0 ? ' (remaining)' : ''} (paid off Yr {effectivePaidOffYear})</div>
+                  : null
             }
             <div className="retire-note">🌏 Overseas (buy path) assumes US house rented out</div>
 
