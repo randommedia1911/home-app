@@ -727,10 +727,31 @@
   border-bottom: 1px dotted #e5e7eb;
 }
 .retire-housing-snap-row:last-child { border-bottom: none; }
+.retire-overseas-group { border-bottom: 1px dotted #e5e7eb; }
+.retire-overseas-group:last-child { border-bottom: none; }
+.retire-overseas-group .retire-housing-snap-row { border-bottom: none; }
+.retire-rental-subrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 0 4px 0;
+  font-size: 0.63rem;
+}
+.retire-rental-label {
+  flex: 0 0 auto;
+  color: #9ca3af;
+  font-weight: 600;
+}
 .retire-snap-yr {
   font-size: 0.7rem;
   color: #6b7280;
   font-weight: 600;
+}
+/* US equiv highlight in overseas table */
+.retire-us-equiv {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #059669;
 }
 .retire-pool-stack {
   display: flex;

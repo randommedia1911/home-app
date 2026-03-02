@@ -1,7 +1,7 @@
 import { fmt } from '../utils/mortgage'
 import './GlobalControls.css'
 
-export default function GlobalControls({ dCashBudget, setDCashBudget, aCashBudget, setACashBudget, dDown, setDDown, aDown, setADown, aMonthlyAdj, setAMonthlyAdj, equalizeYears, setEqualizeYears, saleYear, setSaleYear, appreciationPct, setAppreciationPct, taxIncreasePct, setTaxIncreasePct, hoaIncreasePct, setHoaIncreasePct, dBudget, setDBudget, aBudget, setABudget, investRate, setInvestRate, investYears, setInvestYears, retireMode, setRetireMode, rent1BR, setRent1BR, rent2BR, setRent2BR, rentIncreaseRate, setRentIncreaseRate, rentMoveEvery, setRentMoveEvery, rentMarketGrowth, setRentMarketGrowth, rentParking, setRentParking, utilities, setUtilities, utilIncreaseRate, setUtilIncreaseRate, retireYear, setRetireYear, withdrawalRate, setWithdrawalRate, inflationRate, setInflationRate, currentAge, setCurrentAge, closingCostPct }) {
+export default function GlobalControls({ dCashBudget, setDCashBudget, aCashBudget, setACashBudget, dDown, setDDown, aDown, setADown, aMonthlyAdj, setAMonthlyAdj, equalizeYears, setEqualizeYears, saleYear, setSaleYear, appreciationPct, setAppreciationPct, taxIncreasePct, setTaxIncreasePct, hoaIncreasePct, setHoaIncreasePct, dBudget, setDBudget, aBudget, setABudget, investRate, setInvestRate, retireMode, setRetireMode, rent1BR, setRent1BR, rent2BR, setRent2BR, rentIncreaseRate, setRentIncreaseRate, rentMoveEvery, setRentMoveEvery, rentMarketGrowth, setRentMarketGrowth, rentParking, setRentParking, utilities, setUtilities, utilIncreaseRate, setUtilIncreaseRate, retireYear, setRetireYear, inflationRate, setInflationRate, currentAge, setCurrentAge, spendingCap, setSpendingCap, overseasCost, setOverseasCost, overseasSpendingCap, setOverseasSpendingCap, overseasRentIncrease, setOverseasRentIncrease, colRatio, setColRatio, closingCostPct }) {
   function setUtil(key, val) {
     setUtilities(u => ({ ...u, [key]: Number(val) || 0 }))
   }
@@ -261,21 +261,6 @@ export default function GlobalControls({ dCashBudget, setDCashBudget, aCashBudge
             />
           </div>
         </div>
-        <div className="sc-label-sm" style={{ marginTop: 10 }}>Investment horizon</div>
-        <div className="sc-row">
-          <div className="sc-person-label" style={{ visibility: 'hidden' }}>–</div>
-          <div className="sc-block">
-            <div className="sc-label-row">
-              <span className="sc-label">Invest for</span>
-              <span className="sc-value">{investYears} yr</span>
-            </div>
-            <input type="range" min={5} max={30} step={1}
-              value={investYears} onChange={e => setInvestYears(Number(e.target.value))}
-              className="sc-slider invest-slider" style={{ '--pct': `${((investYears - 5) / 25) * 100}%` }}
-            />
-            <div className="sc-ticks"><span>5 yr</span><span>17 yr</span><span>30 yr</span></div>
-          </div>
-        </div>
         <div className="sc-label-sm" style={{ marginTop: 10 }}>Investment annual return</div>
         <div className="year-picker">
           {[5, 6, 7, 8, 9].map(p => (
@@ -367,21 +352,50 @@ export default function GlobalControls({ dCashBudget, setDCashBudget, aCashBudge
         />
         <div className="sc-ticks"><span>Yr 5</span><span>Yr 40</span></div>
 
-        <div className="sc-label-sm" style={{ marginTop: 10 }}>Withdrawal rate</div>
-        <div className="sc-label-row" style={{ marginBottom: 4 }}>
-          <span className="sc-label" />
-          <span className="sc-value" style={{ color: '#d97706' }}>{withdrawalRate}%</span>
-        </div>
-        <input
-          type="range" min={2} max={15} step={0.5}
-          value={withdrawalRate}
-          onChange={e => setWithdrawalRate(Number(e.target.value))}
-          className="sc-slider retire-slider"
-          style={{ '--pct': `${((withdrawalRate - 2) / 13) * 100}%` }}
-        />
         <div className="sc-ticks"><span>2%</span><span>15%</span></div>
 
-        <div className="sc-label-sm" style={{ marginTop: 8 }}>Inflation (expense growth)</div>
+        <div className="sc-label-sm" style={{ marginTop: 10 }}>Monthly spending cap (today's $)</div>
+        <div className="sc-label-sm" style={{ color: '#9ca3af', marginBottom: 4 }}>Excess reinvested into pool (0 = no cap)</div>
+        <input type="number" min={0} step={500} value={spendingCap}
+          onChange={e => setSpendingCap(Number(e.target.value) || 0)}
+          className="sc-number-input" />
+
+        <div className="sc-divider" style={{ margin: '12px 0 8px' }} />
+        <div className="sc-label-sm" style={{ fontWeight: 700, color: '#374151' }}>Overseas comparison</div>
+        <div className="sc-label-sm" style={{ marginTop: 6 }}>Overseas housing/mo (today's $)</div>
+        <div className="sc-label-sm" style={{ color: '#9ca3af', marginBottom: 4 }}>Rent abroad — used to compare vs. staying in US</div>
+        <input type="number" min={0} step={100} value={overseasCost}
+          onChange={e => setOverseasCost(Number(e.target.value) || 0)}
+          className="sc-number-input" />
+
+        <div className="sc-label-sm" style={{ marginTop: 10 }}>Overseas monthly spend (today's $)</div>
+        <div className="sc-label-sm" style={{ color: '#9ca3af', marginBottom: 4 }}>Personal spending excl. housing</div>
+        <input type="number" min={0} step={100} value={overseasSpendingCap}
+          onChange={e => setOverseasSpendingCap(Number(e.target.value) || 0)}
+          className="sc-number-input" />
+
+        <div className="sc-label-sm" style={{ marginTop: 10 }}>Overseas rent annual increase</div>
+        <div className="year-picker">
+          {[0, 1, 2, 3, 4, 5].map(p => (
+            <button key={p}
+              className={`year-btn ${overseasRentIncrease === p ? 'active' : ''}`}
+              onClick={() => setOverseasRentIncrease(p)}
+            >{p}%</button>
+          ))}
+        </div>
+
+        <div className="sc-label-sm" style={{ marginTop: 10 }}>Cost of living vs US</div>
+        <div className="sc-label-sm" style={{ color: '#9ca3af', marginBottom: 4 }}>$1 overseas buys ${(1 / (colRatio / 100)).toFixed(1)} US equivalent</div>
+        <div className="year-picker">
+          {[25, 35, 40, 50, 60].map(p => (
+            <button key={p}
+              className={`year-btn ${colRatio === p ? 'active' : ''}`}
+              onClick={() => setColRatio(p)}
+            >{p}%</button>
+          ))}
+        </div>
+
+        <div className="sc-label-sm" style={{ marginTop: 10 }}>Inflation (expense growth)</div>
         <div className="year-picker">
           {[2, 2.5, 3].map(p => (
             <button key={p}
