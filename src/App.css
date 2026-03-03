@@ -66,6 +66,43 @@ body {
   margin-left: 280px;
 }
 
+.cards-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 4px 12px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: #f8f9fb;
+}
+
+.bed-filter {
+  display: flex;
+  gap: 6px;
+}
+
+.bed-filter-btn {
+  padding: 5px 14px;
+  border-radius: 20px;
+  border: 1.5px solid #d1d5db;
+  background: #fff;
+  color: #6b7280;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.bed-filter-btn:hover {
+  border-color: #6366f1;
+  color: #6366f1;
+}
+.bed-filter-btn.active {
+  background: #6366f1;
+  border-color: #6366f1;
+  color: #fff;
+}
+
 .cards-grid {
   display: flex;
   flex-direction: row;
@@ -74,8 +111,8 @@ body {
   min-width: min-content;
 }
 .cards-grid > * {
-  flex: 0 0 320px;
-  width: 320px;
+  flex: 0 0 360px;
+  width: 360px;
 }
 
 /* Empty state */

@@ -455,6 +455,12 @@
   border-radius: 8px;
   overflow: hidden;
 }
+.rent-vs-eyebrow {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #6366f1;
+  margin-bottom: 4px;
+}
 .rent-vs-title {
   font-size: 0.7rem;
   font-weight: 700;
@@ -479,18 +485,39 @@
 }
 .rvd-year { font-size: 0.78rem; font-weight: 700; color: #374151; }
 .rvd-rent-tag { font-size: 0.68rem; color: #6b7280; }
-.rvd-cost-line { font-size: 0.68rem; color: #6b7280; margin-bottom: 3px; }
+.rvd-cost-line { font-size: 0.68rem; color: #9ca3af; margin-top: 3px; }
+.rvd-cost-line strong { color: #6b7280; }
 .rvd-person-row {
   display: flex;
-  gap: 8px;
   align-items: baseline;
-  font-size: 0.73rem;
+  font-size: 0.68rem;
   color: #374151;
   margin-top: 1px;
+  gap: 0;
 }
-.rvd-who { font-weight: 700; font-size: 0.75rem; min-width: 10px; }
-.rvd-item { color: #6b7280; }
+.rvd-who {
+  font-weight: 700;
+  font-size: 0.75rem;
+  min-width: 14px;
+  flex-shrink: 0;
+}
+.rvd-item {
+  color: #6b7280;
+  flex: 1;
+  text-align: left;
+  padding-left: 4px;
+  white-space: nowrap;
+  min-width: 0;
+  font-size: 0.68rem;
+}
 .rvd-item strong { color: #374151; }
+.rvd-person-block { margin-bottom: 1px; }
+.rvd-sub {
+  font-size: 0.65rem;
+  color: #b3bac5;
+  padding-left: 16px;
+  margin-top: 1px;
+}
 .rent-vs-total {
   display: grid;
   grid-template-columns: 1.5fr 3fr 3fr;
@@ -537,6 +564,12 @@
   background: #f0fdf4;
   border-top: 1.5px solid #86efac !important;
 }
+.invest-combined-today {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #166534;
+  opacity: 0.75;
+}
 .invest-combined {
   font-size: 0.82rem;
   font-weight: 800;
@@ -577,6 +610,31 @@
   background: #d1fae5;
   border-radius: 5px;
   padding: 5px 4px;
+}
+
+.invest-snap-costs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 3px;
+  padding-left: 2px;
+}
+.invest-snap-costs-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #9ca3af;
+}
+.invest-snap-costs-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  font-size: 0.65rem;
+  color: #b3bac5;
+}
+.invest-snap-paidoff {
+  color: #10b981;
+  font-weight: 600;
 }
 
 .card-notes {
@@ -625,6 +683,31 @@
   background: #f1f5f9;
   border-radius: 3px;
 }
+.cost-proj-header-4 { grid-template-columns: 2fr 3fr 3fr 3fr; }
+.cost-proj-row-4    { grid-template-columns: 2fr 3fr 3fr 3fr; }
+.rent-over-budget { background: #fef2f2 !important; }
+.rent-over-note {
+  font-size: 0.62rem;
+  color: #ef4444;
+  margin-top: 4px;
+  padding: 2px 4px;
+}
+.cost-proj-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.pool-draw-tag {
+  font-size: 0.6rem;
+  color: #ef4444;
+  font-weight: 600;
+}
+.pool-draw-item {
+  color: #ef4444 !important;
+}
+.pool-draw-item strong {
+  color: #ef4444 !important;
+}
 
 /* ── Retirement section ──────────────────────────────────────────────────── */
 .retire-section {
@@ -665,7 +748,7 @@
   font-weight: 500;
 }
 .retire-val {
-  font-size: 0.78rem;
+  font-size: 0.70rem;
   font-weight: 700;
   color: #374151;
   white-space: nowrap;
@@ -709,8 +792,8 @@
   gap: 1px;
 }
 .retire-snap-cols-header {
-  display: grid;
-  grid-template-columns: 1.5fr 2.5fr 3fr 2.5fr;
+  display: flex;
+  align-items: baseline;
   font-size: 0.63rem;
   font-weight: 700;
   color: #9ca3af;
@@ -720,12 +803,30 @@
   border-bottom: 1px solid #e5e7eb;
   margin-bottom: 2px;
 }
+.retire-snap-cols-header > span:first-child {
+  min-width: 46px;
+  flex-shrink: 0;
+}
+.retire-snap-cols-header > span:not(:first-child) {
+  flex: 1;
+  padding-left: 4px;
+  white-space: nowrap;
+  min-width: 0;
+}
 .retire-housing-snap-row {
-  display: grid;
-  grid-template-columns: 1.5fr 2.5fr 3fr 2.5fr;
-  align-items: baseline;
-  padding: 2px 0;
+  display: flex;
+  align-items: flex-start;
+  padding: 3px 0;
   border-bottom: 1px dotted #e5e7eb;
+  font-size: 0.68rem;
+}
+.retire-snap-cell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding-left: 4px;
+  min-width: 0;
+  white-space: nowrap;
 }
 .retire-housing-snap-row:last-child { border-bottom: none; }
 .retire-overseas-group { border-bottom: 1px dotted #e5e7eb; }
@@ -789,20 +890,17 @@
   color: #9ca3af;
 }
 .retire-snap-yr {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   color: #6b7280;
-  font-weight: 600;
+  font-weight: 700;
+  min-width: 46px;
+  flex-shrink: 0;
 }
 /* US equiv highlight in overseas table */
 .retire-us-equiv {
   font-size: 0.68rem;
   font-weight: 700;
   color: #059669;
-}
-.retire-pool-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
 }
 .retire-pool-real {
   font-size: 0.63rem;

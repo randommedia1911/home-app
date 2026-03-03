@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { calcTotalMonthly, calcSaleProceeds, calcAMonthlyFromOwnership, calcRemainingBalance, fmt } from '../utils/mortgage'
+import { calcTotalMonthly, calcSaleProceeds, calcAMonthlyFromOwnership, calcRemainingBalance, calcMonthlyPI, fmt } from '../utils/mortgage'
 import './HouseCard.css'
 
 // FV of variable annual monthly contributions, each grown to end of investYears
@@ -9,9 +9,9 @@ function fvVariableAnnuity(yearlyPmts, annualRatePct) {
   const n = yearlyPmts.length
   let fv = 0
   for (let y = 0; y < n; y++) {
-    const pmt = Math.max(0, yearlyPmts[y])
-    if (pmt <= 0) continue
-    // FV of 12 monthly contributions made during year y+1, grown to end of period
+    const pmt = yearlyPmts[y]  // negative = pool draw/withdrawal
+    if (pmt === 0) continue
+    // FV of 12 monthly payments made during year y+1, grown to end of period
     const fvYear = r > 0 ? pmt * (Math.pow(1 + r, 12) - 1) / r : pmt * 12
     const remainingMonths = (n - y - 1) * 12
     fv += fvYear * (r > 0 ? Math.pow(1 + r, remainingMonths) : 1)
@@ -19,7 +19,7 @@ function fvVariableAnnuity(yearlyPmts, annualRatePct) {
   return fv
 }
 
-export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDown, closingCostPct, aMonthlyAdj, equalizeYears, saleYear, appreciationPct, taxIncreasePct, hoaIncreasePct, insuranceIncreasePct, refiYear, refiRate, refiTermYears, dBudget, aBudget, investRate, retireMode, rentYield, rent1BR, rent2BR, rentUpgradeTo2BR, rentIncreaseRate, rentMoveEvery, rentMarketGrowth, rentParking, utilities, rentUtilities, utilIncreaseRate, retireYear, inflationRate, currentAge, spendingCap, overseasCost, overseasSpendingCap, overseasRentIncrease, usRentalIncrease, colRatio, snapshotsExpanded, onToggleSnapshots, onEdit, onDelete, onStatusChange }) {
+export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDown, closingCostPct, aMonthlyAdj, equalizeYears, saleYear, appreciationPct, taxIncreasePct, hoaIncreasePct, insuranceIncreasePct, refiYear, refiRate, refiTermYears, dBudget, aBudget, aBudgetIncrease, investRate, retireMode, rentYield, rent1BR, rent2BR, rentUpgradeTo2BR, rentIncreaseRate, rentMoveEvery, rentMarketGrowth, rentParking, utilities, rentUtilities, utilIncreaseRate, retireYear, retireMaxAge, inflationRate, currentAge, spendingCap, overseasCost, overseasSpendingCap, overseasRentIncrease, usRentalIncrease, colRatio, maintenancePct, relocateMonthlyCost, relocateBuyPrice, relocateBuyDownPct, relocateMortgageRate, snapshotsExpanded, onToggleSnapshots, onEdit, onDelete, onStatusChange }) {
   const [dOwnTarget, setDOwnTarget] = useState(50)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -42,6 +42,13 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
 
   const appreciatedPrice = house.price * Math.pow(1 + (appreciationPct || 0) / 100, saleYear)
   const sale = calcSaleProceeds(house, dDown, aDown, closingCostPct, effectiveAMonthly, equalizeYears, saleYear, appreciatedPrice, utilities)
+
+  // Maintenance applies only when HOA = 0 (single-family / no HOA homes)
+  const baseMaintenanceMonthly = house.hoaMonthly === 0
+    ? (house.price * (maintenancePct || 0)) / 100 / 12
+    : 0
+  // Inflate maintenance at the same rate as general inflation
+  const maintAtYear = y => baseMaintenanceMonthly * Math.pow(1 + (inflationRate || 3) / 100, y)
 
   // Refinance helpers — must be defined before any per-year loops
   const hasRefi = (refiYear || 0) > 0
@@ -81,7 +88,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
     const phBase = {
       ...house,
       propertyTaxAnnual: house.propertyTaxAnnual * Math.pow(1 + (taxIncreasePct || 0) / 100, y),
-      hoaMonthly:        house.hoaMonthly        * Math.pow(1 + (hoaIncreasePct  || 0) / 100, y),
+      hoaMonthly:        house.hoaMonthly * Math.pow(1 + (hoaIncreasePct  || 0) / 100, y) + maintAtYear(y),
       insuranceMonthly:  house.insuranceMonthly  * Math.pow(1 + (insuranceIncreasePct || 3) / 100, y),
     }
     const ph = y > effectivePaidOffYear ? phBase : applyRefi(phBase, y)
@@ -95,8 +102,8 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
     const aCost = y > effectivePaidOffYear
       ? (p.tax + p.hoa + p.insurance + p.utilsTotal) * (1 - dOwnTarget / 100)
       : (inRepay ? p.aNetDuring   : p.aNetAfter)
-    dYearlyLeftover.push(Math.max(0, (dBudget || 0) - dCost))
-    aYearlyLeftover.push(Math.max(0, (aBudget || 0) - aCost))
+    dYearlyLeftover.push((dBudget || 0) - dCost)   // negative = pool draw
+    aYearlyLeftover.push((aBudget || 0) - aCost)
   }
   const dInvestOnly = fvVariableAnnuity(dYearlyLeftover, investRate || 0)
   const aInvestOnly = fvVariableAnnuity(aYearlyLeftover, investRate || 0)
@@ -132,9 +139,10 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
   // Rent & invest comparison: if instead you rented an equivalent place and invested the difference
   // Start in 1BR, upgrade to 2BR at rentUpgradeTo2BR year
   const upgradeYear = rentUpgradeTo2BR || 3
-  const totalBudget = (dBudget || 0) + (aBudget || 0)
-  const dBudgetFrac = totalBudget > 0 ? (dBudget || 0) / totalBudget : 0.5
-  const aBudgetFrac = 1 - dBudgetFrac
+  // A pays up to her inflation-adjusted budget; D covers the rest
+  function aRentBudgetAtYear(y) {
+    return (aBudget || 0) * Math.pow(1 + (aBudgetIncrease || 0) / 100, y)
+  }
   // Utilities for the rent path (separate from owning utilities)
   const ru = rentUtilities || {}
   const utilsTotal2 = (ru.water || 0) + (ru.trash || 0) + (ru.sewer || 0) + (ru.electricity || 0)
@@ -172,8 +180,11 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
     const rentAtY = calcRentAtYear(y)
     const utilsAtY = utilsTotal2 * Math.pow(1 + (utilIncreaseRate || 0) / 100, y)  // rent utils grow same rate
     const totalRentCost = rentAtY + utilsAtY + (rentParking || 0)
-    dRentYearlyInvest.push(Math.max(0, (dBudget || 0) - totalRentCost * dBudgetFrac))
-    aRentYearlyInvest.push(Math.max(0, (aBudget || 0) - totalRentCost * aBudgetFrac))
+    const aRentPays = Math.min(aRentBudgetAtYear(y), totalRentCost)
+    const dRentPays = totalRentCost - aRentPays
+    // Allow negative: when rent > income cap, D draws from portfolio
+    dRentYearlyInvest.push((dBudget || 0) - dRentPays)
+    aRentYearlyInvest.push(Math.max(0, (aBudget || 0) - aRentPays))
   }
   // Lump sum invested = cash not spent on down payment, compounded over iYrs
   const downR = (investRate || 0) / 100
@@ -208,7 +219,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
     const phBase = {
       ...house,
       propertyTaxAnnual: house.propertyTaxAnnual * Math.pow(1 + (taxIncreasePct || 0) / 100, y),
-      hoaMonthly:        house.hoaMonthly        * Math.pow(1 + (hoaIncreasePct  || 0) / 100, y),
+      hoaMonthly:        house.hoaMonthly * Math.pow(1 + (hoaIncreasePct  || 0) / 100, y) + maintAtYear(y),
       insuranceMonthly:  house.insuranceMonthly  * Math.pow(1 + (insuranceIncreasePct || 3) / 100, y),
     }
     const ph = applyRefi(phBase, y)
@@ -262,7 +273,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
     const phBase = {
       ...house,
       propertyTaxAnnual: house.propertyTaxAnnual * Math.pow(1 + (taxIncreasePct||0)/100, y),
-      hoaMonthly:        house.hoaMonthly        * Math.pow(1 + (hoaIncreasePct ||0)/100, y),
+      hoaMonthly:        house.hoaMonthly * Math.pow(1 + (hoaIncreasePct ||0)/100, y) + maintAtYear(y),
       insuranceMonthly:  house.insuranceMonthly  * Math.pow(1 + (insuranceIncreasePct || 3) / 100, y),
     }
     const ph = applyRefi(phBase, y)
@@ -308,7 +319,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
     const phBase = {
       ...house,
       propertyTaxAnnual: house.propertyTaxAnnual * Math.pow(1 + (taxIncreasePct || 0) / 100, y),
-      hoaMonthly:        house.hoaMonthly        * Math.pow(1 + (hoaIncreasePct  || 0) / 100, y),
+      hoaMonthly:        house.hoaMonthly * Math.pow(1 + (hoaIncreasePct  || 0) / 100, y) + maintAtYear(y),
       insuranceMonthly:  house.insuranceMonthly  * Math.pow(1 + (insuranceIncreasePct || 3) / 100, y),
     }
     const ph = applyRefi(phBase, y)
@@ -341,7 +352,8 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
   const combinedPortRetire = dPortRetire + aPortRetire
   const gr = (investRate || 0) / 100
   const retireAge = (currentAge || 33) + rY
-  const maxOffset = Math.max(0, 80 - retireAge)
+  const inflFactorRY = Math.pow(1 + (inflationRate || 3) / 100, rY)
+  const maxOffset = Math.max(0, (retireMaxAge || 100) - retireAge)
   const snapOffsets = []
   for (let o = 0; o <= maxOffset; o += 3) snapOffsets.push(o)
   // Pool simulation: each year withdraw exactly (spendingCap + housing) inflation-adjusted,
@@ -380,6 +392,71 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
     simPoolRentOverseas.push(simPoolRentOverseas[n - 1] * (1 + gr) - targetAnnual)
   }
 
+  // Keep renting in US — rent path, stay in US (no owned house)
+  const simPoolRentUS = [rentCombinedPoolAtRetire]
+  for (let n = 1; n <= maxOffset; n++) {
+    const yr = rY + n
+    const inflFactorYr = Math.pow(1 + (inflationRate || 3) / 100, yr)
+    const uf = Math.pow(1 + (utilIncreaseRate || 0) / 100, yr)
+    const rentUSHousingYr = (calcRentAtYear(yr) + utilsTotal2 * uf + (rentParking || 0) * uf) * 12
+    const targetAnnual = (spendingCap || 0) * inflFactorYr * 12 + rentUSHousingYr
+    simPoolRentUS.push(simPoolRentUS[n - 1] * (1 + gr) - targetAnnual)
+  }
+
+  // Sell & Relocate — sell house at retirement, add proceeds to combined pool
+  // New location housing cost grows with inflation; spending cap inflated too
+  const retireAppreciatedPrice = (house.price || 0) * Math.pow(1 + (appreciationPct || 0) / 100, rY)
+  const sellProceeds = retireAppreciatedPrice * 0.94  // ~6% selling costs
+  const sellRelocateStartPool = combinedPortRetire + sellProceeds
+  const simPoolSellRelocate = [sellRelocateStartPool]
+  for (let n = 1; n <= maxOffset; n++) {
+    const yr = rY + n
+    const inflFactorYr = Math.pow(1 + (inflationRate || 3) / 100, yr)
+    const relocateHousingYr = (relocateMonthlyCost || 0) * inflFactorYr * 12
+    const targetAnnual = (spendingCap || 0) * inflFactorYr * 12 + relocateHousingYr
+    simPoolSellRelocate.push(simPoolSellRelocate[n - 1] * (1 + gr) - targetAnnual)
+  }
+
+  // Sell & Buy — sell current house, buy new home at new location with proceeds as down payment
+  // New home price nominal = today's price inflated to retirement year
+  const newHomePriceNominal = (relocateBuyPrice || 0) * inflFactorRY
+  const newHomeDownAmt = newHomePriceNominal * ((relocateBuyDownPct || 20) / 100)
+  const newHomeLoan = newHomePriceNominal - newHomeDownAmt
+  const newHomePI = calcMonthlyPI(newHomeLoan, relocateMortgageRate || 7, 30)
+  // Base monthly costs at retirement year (tax at 1.25% of value, maintenance at maintenancePct)
+  const newHomeTaxBase = newHomePriceNominal * 0.0125 / 12
+  const newHomeMainBase = newHomePriceNominal * ((maintenancePct || 1) / 100) / 12
+  // Pool after purchase: proceeds go toward down payment first, then leftover + remaining pool
+  const sellBuyNetProceeds = sellProceeds - newHomeDownAmt
+  const sellBuyStartPool = combinedPortRetire + sellBuyNetProceeds
+  const simPoolSellBuy = [sellBuyStartPool]
+  for (let n = 1; n <= maxOffset; n++) {
+    const yr = rY + n
+    const inflFactorYr = Math.pow(1 + (inflationRate || 3) / 100, yr)
+    const yearsInNewHome = n
+    const paidOffNewHome = yearsInNewHome >= 30
+    const newHomeMortgageYr = paidOffNewHome ? 0 : newHomePI
+    const newHomeTaxYr = newHomeTaxBase * Math.pow(1 + (taxIncreasePct || 0) / 100, yearsInNewHome)
+    const newHomeMainYr = newHomeMainBase * Math.pow(1 + (inflationRate || 3) / 100, yearsInNewHome)
+    const housingYr = (newHomeMortgageYr + newHomeTaxYr + newHomeMainYr) * 12
+    const targetAnnual = (spendingCap || 0) * inflFactorYr * 12 + housingYr
+    simPoolSellBuy.push(simPoolSellBuy[n - 1] * (1 + gr) - targetAnnual)
+  }
+
+  // Sell & Buy All Cash — pay full price, no mortgage, lower monthly costs but smaller pool
+  const sellBuyCashStartPool = combinedPortRetire + sellProceeds - newHomePriceNominal
+  const simPoolSellBuyCash = [sellBuyCashStartPool]
+  for (let n = 1; n <= maxOffset; n++) {
+    const yr = rY + n
+    const inflFactorYr = Math.pow(1 + (inflationRate || 3) / 100, yr)
+    const yearsInNewHome = n
+    const newHomeTaxYr = newHomeTaxBase * Math.pow(1 + (taxIncreasePct || 0) / 100, yearsInNewHome)
+    const newHomeMainYr = newHomeMainBase * Math.pow(1 + (inflationRate || 3) / 100, yearsInNewHome)
+    const housingYr = (newHomeTaxYr + newHomeMainYr) * 12  // no mortgage
+    const targetAnnual = (spendingCap || 0) * inflFactorYr * 12 + housingYr
+    simPoolSellBuyCash.push(simPoolSellBuyCash[n - 1] * (1 + gr) - targetAnnual)
+  }
+
   const retireHousingSnaps = snapOffsets.map(offset => {
     const y = rY + offset
     const housingBreakdown = calcHousingBreakdownAtYear(y)
@@ -405,10 +482,47 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
     const rentOverseasPoolRemaining = simPoolRentOverseas[offset] ?? 0
     const rentOverseasPoolReal = rentOverseasPoolRemaining / inflFactorY
 
+    // Keep renting in US scenario
+    const uf = Math.pow(1 + (utilIncreaseRate || 0) / 100, y)
+    const rentUSHousingMonthly = calcRentAtYear(y) + utilsTotal2 * uf + (rentParking || 0) * uf
+    const rentUSAfterHousing = (spendingCap || 0) * inflFactorY
+    const rentUSPoolRemaining = simPoolRentUS[offset] ?? 0
+    const rentUSPoolReal = rentUSPoolRemaining / inflFactorY
+
+    // Sell & Relocate scenario
+    const sellRelocateHousingMonthly = (relocateMonthlyCost || 0) * inflFactorY
+    const sellRelocateAfterHousing = (spendingCap || 0) * inflFactorY
+    const sellRelocatePoolRemaining = simPoolSellRelocate[offset] ?? 0
+    const sellRelocatePoolReal = sellRelocatePoolRemaining / inflFactorY
+
+    // Sell & Buy scenario
+    const yearsInNewHome = offset
+    const paidOffNewHome = yearsInNewHome >= 30
+    const sellBuyMortgageMonthly = paidOffNewHome ? 0 : newHomePI
+    const sellBuyTaxMonthly = newHomeTaxBase * Math.pow(1 + (taxIncreasePct || 0) / 100, yearsInNewHome)
+    const sellBuyMainMonthly = newHomeMainBase * Math.pow(1 + (inflationRate || 3) / 100, yearsInNewHome)
+    const sellBuyHousingMonthly = sellBuyMortgageMonthly + sellBuyTaxMonthly + sellBuyMainMonthly
+    const sellBuyAfterHousing = (spendingCap || 0) * inflFactorY
+    const sellBuyPoolRemaining = simPoolSellBuy[offset] ?? 0
+    const sellBuyPoolReal = sellBuyPoolRemaining / inflFactorY
+
+    // Sell & Buy All Cash scenario
+    const sellBuyCashTaxMonthly = newHomeTaxBase * Math.pow(1 + (taxIncreasePct || 0) / 100, yearsInNewHome)
+    const sellBuyCashMainMonthly = newHomeMainBase * Math.pow(1 + (inflationRate || 3) / 100, yearsInNewHome)
+    const sellBuyCashHousingMonthly = sellBuyCashTaxMonthly + sellBuyCashMainMonthly
+    const sellBuyCashAfterHousing = (spendingCap || 0) * inflFactorY
+    const sellBuyCashPoolRemaining = simPoolSellBuyCash[offset] ?? 0
+    const sellBuyCashPoolReal = sellBuyCashPoolRemaining / inflFactorY
+
     return { y, housing, housingBreakdown, netRental, poolRemaining, afterHousing,
       overseasHousingNominal, overseasNetRental, overseasAfterHousing, overseasAfterToday,
       overseasUSEquiv, overseasPoolRemaining, overseasPoolReal, rentalBreakdown,
-      rentOverseasPoolRemaining, rentOverseasPoolReal }
+      rentOverseasPoolRemaining, rentOverseasPoolReal,
+      rentUSHousingMonthly, rentUSAfterHousing, rentUSPoolRemaining, rentUSPoolReal,
+      sellRelocateHousingMonthly, sellRelocateAfterHousing, sellRelocatePoolRemaining, sellRelocatePoolReal,
+      sellBuyMortgageMonthly, sellBuyTaxMonthly, sellBuyMainMonthly, sellBuyHousingMonthly,
+      sellBuyAfterHousing, sellBuyPoolRemaining, sellBuyPoolReal,
+      sellBuyCashHousingMonthly, sellBuyCashAfterHousing, sellBuyCashPoolRemaining, sellBuyCashPoolReal }
   })
   const rentBaseRentYr1 = calcRentAtYear(1)
   const rentBaseRentFinal = calcRentAtYear(iYrs)
@@ -419,6 +533,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
     dFV: fvVariableAnnuity(dYearlyLeftover.slice(0, snapY), investRate || 0),
     aFV: fvVariableAnnuity(aYearlyLeftover.slice(0, snapY), investRate || 0),
     isSaleYear: sellAndMove && snapY >= saleYear && (snapY - saleYear) < 3,
+    housingBreakdown: calcHousingBreakdownAtYear(snapY),
   }))
 
   // Projected monthly costs every 3 years (compounded tax & HOA)
@@ -434,7 +549,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
     const phBase = {
       ...house,
       propertyTaxAnnual: house.propertyTaxAnnual * Math.pow(1 + (taxIncreasePct || 0) / 100, y),
-      hoaMonthly:        house.hoaMonthly        * Math.pow(1 + (hoaIncreasePct  || 0) / 100, y),
+      hoaMonthly:        house.hoaMonthly * Math.pow(1 + (hoaIncreasePct  || 0) / 100, y) + maintAtYear(y),
       insuranceMonthly:  house.insuranceMonthly  * Math.pow(1 + (insuranceIncreasePct || 3) / 100, y),
     }
     const ph = applyRefi(phBase, y)
@@ -457,7 +572,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
     const refiPhBase = {
       ...house,
       propertyTaxAnnual: house.propertyTaxAnnual * Math.pow(1 + (taxIncreasePct || 0) / 100, refiYear),
-      hoaMonthly:        house.hoaMonthly        * Math.pow(1 + (hoaIncreasePct  || 0) / 100, refiYear),
+      hoaMonthly:        house.hoaMonthly * Math.pow(1 + (hoaIncreasePct  || 0) / 100, refiYear) + maintAtYear(refiYear),
       insuranceMonthly:  house.insuranceMonthly  * Math.pow(1 + (insuranceIncreasePct || 3) / 100, refiYear),
     }
     const refiPh = applyRefi(refiPhBase, refiYear)
@@ -612,16 +727,31 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
         {costIncreaseVisible && (
           <div className="cost-projection">
             <div className="cost-proj-title">Monthly net (with {taxIncreasePct}% tax / {hoaIncreasePct}% HOA annual increase)</div>
-            <div className="cost-proj-header">
-              <span>Year</span><span className="d-color">D</span><span className="a-color">A</span>
+            <div className="cost-proj-header cost-proj-header-4">
+              <span>Year</span><span className="d-color">D</span><span className="a-color">A</span><span>Total</span>
             </div>
-            {projRows.map(r => (
-              <div key={r.y} className="cost-proj-row">
-                <span>Yr {r.y}</span>
-                <span className="d-color">{fmt(r.dNet)}</span>
-                <span className="a-color">{fmt(r.aNet)}</span>
-              </div>
-            ))}
+            {projRows.map(r => {
+              const dPoolDraw = Math.max(0, r.dNet - (dBudget || 0))
+              const aPoolDraw = Math.max(0, r.aNet - (aBudget || 0))
+              const anyOver = dPoolDraw > 0 || aPoolDraw > 0
+              return (
+                <div key={r.y} className={`cost-proj-row cost-proj-row-4${anyOver ? ' rent-over-budget' : ''}`}>
+                  <span>Yr {r.y}</span>
+                  <span className="d-color cost-proj-cell">
+                    <span>{fmt(r.dNet)}</span>
+                    {dPoolDraw > 0 && <span className="pool-draw-tag">−{fmt(Math.round(dPoolDraw))} pool</span>}
+                  </span>
+                  <span className="a-color cost-proj-cell">
+                    <span>{fmt(r.aNet)}</span>
+                    {aPoolDraw > 0 && <span className="pool-draw-tag">−{fmt(Math.round(aPoolDraw))} pool</span>}
+                  </span>
+                  <span style={{ color: anyOver ? '#ef4444' : '#374151', fontWeight: 600 }}>{fmt(r.dNet + r.aNet)}</span>
+                </div>
+              )
+            })}
+            {projRows.some(r => r.dNet > (dBudget || 0) || r.aNet > (aBudget || 0)) && (
+              <div className="rent-over-note">⚠ Budget exceeded in some years — shortfall drawn from investment pool</div>
+            )}
           </div>
         )}
 
@@ -778,8 +908,9 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                 {snapshotsExpanded ? '▾ Hide' : '▸ Show'} year-by-year
               </button>
               {snapshotsExpanded && investSnapshots.map(s => {
-                const dSavesAt = Math.max(0, dYearlyLeftover[s.y - 1] || 0)
-                const aSavesAt = Math.max(0, aYearlyLeftover[s.y - 1] || 0)
+                const dSavesAt = dYearlyLeftover[s.y - 1] || 0
+                const aSavesAt = aYearlyLeftover[s.y - 1] || 0
+                const hb = s.housingBreakdown
                 return (
                   <div key={s.y} className={`invest-snap-detail${s.isSaleYear ? ' sale-inject' : ''}`}>
                     <div className="rvd-header">
@@ -788,15 +919,38 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                         {s.isSaleYear && sellAndMove ? 'House sold this year' : ''}
                       </span>
                     </div>
-                    <div className="rvd-person-row">
-                      <span className="d-color rvd-who">D</span>
-                      <span className="rvd-item">saves <strong>{dSavesAt > 0 ? `${fmt(dSavesAt)}/mo` : '—'}</strong></span>
-                      <span className="rvd-item">portfolio <strong className="d-color">{fmt(s.dFV)}</strong></span>
+                    <div className="rvd-person-block">
+                      <div className="rvd-person-row">
+                        <span className="d-color rvd-who">D</span>
+                        {dSavesAt > 0
+                          ? <span className="rvd-item">saves <strong>{fmt(dSavesAt)}/mo</strong></span>
+                          : dSavesAt < 0
+                            ? <span className="rvd-item pool-draw-item">draws <strong>{fmt(Math.abs(dSavesAt))}/mo</strong></span>
+                            : <span className="rvd-item">saves <strong>—</strong></span>}
+                        <span className="rvd-item">portfolio <strong className="d-color">{fmt(s.dFV)}</strong></span>
+                      </div>
+                      <div className="rvd-sub">housing −{fmt(Math.round(hb.total * dOwnTarget / 100))}/mo</div>
                     </div>
-                    <div className="rvd-person-row">
-                      <span className="a-color rvd-who">A</span>
-                      <span className="rvd-item">saves <strong>{aSavesAt > 0 ? `${fmt(aSavesAt)}/mo` : '—'}</strong></span>
-                      <span className="rvd-item">portfolio <strong className="a-color">{fmt(s.aFV)}</strong></span>
+                    <div className="rvd-person-block">
+                      <div className="rvd-person-row">
+                        <span className="a-color rvd-who">A</span>
+                        {aSavesAt > 0
+                          ? <span className="rvd-item">saves <strong>{fmt(aSavesAt)}/mo</strong></span>
+                          : aSavesAt < 0
+                            ? <span className="rvd-item pool-draw-item">draws <strong>{fmt(Math.abs(aSavesAt))}/mo</strong></span>
+                            : <span className="rvd-item">saves <strong>—</strong></span>}
+                        <span className="rvd-item">portfolio <strong className="a-color">{fmt(s.aFV)}</strong></span>
+                      </div>
+                      <div className="rvd-sub">housing −{fmt(Math.round(hb.total * (1 - dOwnTarget / 100)))}/mo</div>
+                    </div>
+                    <div className="rvd-cost-line" style={{ marginTop: 3 }}>
+                      {hb.pi > 0 ? `${fmt(hb.pi)} P&I` : ''}
+                      {hb.tax > 0 ? ` · ${fmt(hb.tax)} tax` : ''}
+                      {hb.hoa > 0 ? ` · ${fmt(hb.hoa)} ${baseMaintenanceMonthly > 0 ? 'repairs' : 'HOA'}` : ''}
+                      {hb.insurance > 0 ? ` · ${fmt(hb.insurance)} ins` : ''}
+                      {hb.utils > 0 ? ` · ${fmt(hb.utils)} utils` : ''}
+                      {' = '}<strong>{fmt(hb.total)}/mo</strong>
+                      {hb.mortgagePaidOff && <span className="invest-snap-paidoff"> · ✓ paid off</span>}
                     </div>
                   </div>
                 )
@@ -829,6 +983,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
               </div>
               <div className="invest-combined">
                 Combined {fmt(dInvestFV + aInvestFV)}
+                <span className="invest-combined-today"> · {fmt(Math.round((dInvestFV + aInvestFV) / inflFactorRY))} today</span>
               </div>
               {rentOut && (
                 <div className="invest-equity-note">
@@ -838,8 +993,48 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
             </div>
 
             <div className="rent-vs-buy">
+              <div className="rent-vs-eyebrow">🏘 What if you rented instead of buying?</div>
               <div className="rent-vs-title">
                 vs. Rent &amp; Invest (1BR→2BR Yr {upgradeYear}, {fmt(rentBaseRentYr1 + (rentParking||0) + utilsTotal2)}→{fmt(rentBaseRentFinal + (rentParking||0) + utilsTotal2)}/mo{rentMoveEvery ? `, move every ${rentMoveEvery} yr` : ''})
+              </div>
+              <div style={{ marginBottom: 8 }}>
+                <div className="own-row-label">A pays budget · {aBudgetIncrease > 0 ? `+${aBudgetIncrease}%/yr` : 'flat'} · D covers rest</div>
+                <div className="cost-projection" style={{ marginTop: 8 }}>
+                  <div className="cost-proj-title">Monthly rent cost ({rentIncreaseRate}% lease / {utilIncreaseRate}% util increase)</div>
+                  <div className="cost-proj-header cost-proj-header-4">
+                    <span>Year</span><span className="d-color">D</span><span className="a-color">A</span><span>Total</span>
+                  </div>
+                  {[3,6,9,12,15,18,21,24,27,30].filter(y => y <= iYrs).map(snapY => {
+                    const uf = Math.pow(1 + (utilIncreaseRate || 0) / 100, snapY)
+                    const ru = rentUtilities || {}
+                    const utilsSnap = (ru.water||0)*uf + (ru.sewer||0)*uf + (ru.trash||0)*uf + (ru.electricity||0)*uf
+                    const parkSnap  = (rentParking||0) * uf
+                    const total = calcRentAtYear(snapY) + utilsSnap + parkSnap
+                    const aOwes = Math.min(aRentBudgetAtYear(snapY), total)
+                    const dOwesTotal = total - aOwes
+                    const dFromPool = Math.max(0, dOwesTotal - (dBudget || 0))
+                    const overBudget = dFromPool > 0
+                    return (
+                      <div key={snapY} className={`cost-proj-row cost-proj-row-4${overBudget ? ' rent-over-budget' : ''}`}>
+                        <span>Yr {snapY}</span>
+                        <span className="d-color cost-proj-cell">
+                          <span>{fmt(Math.round(dOwesTotal))}</span>
+                          {overBudget && <span className="pool-draw-tag">−{fmt(Math.round(dFromPool))} pool</span>}
+                        </span>
+                        <span className="a-color">{fmt(Math.round(aOwes))}</span>
+                        <span style={{ color: overBudget ? '#ef4444' : '#374151', fontWeight: 600 }}>{fmt(Math.round(total))}</span>
+                      </div>
+                    )
+                  })}
+                  {[3,6,9,12,15,18,21,24,27,30].filter(y => y <= iYrs).some(snapY => {
+                    const uf = Math.pow(1 + (utilIncreaseRate || 0) / 100, snapY)
+                    const ru = rentUtilities || {}
+                    const t = calcRentAtYear(snapY) + (ru.water||0)*uf + (ru.sewer||0)*uf + (ru.trash||0)*uf + (ru.electricity||0)*uf + (rentParking||0)*uf
+                    return t - Math.min(aRentBudgetAtYear(snapY), t) > (dBudget || 0)
+                  }) && (
+                    <div className="rent-over-note">⚠ D's budget ({fmt(dBudget)}/mo) exceeded in some years — shortfall drawn from D's portfolio</div>
+                  )}
+                </div>
               </div>
               <button className="snap-toggle-btn" onClick={onToggleSnapshots}>
                 {snapshotsExpanded ? '▾ Hide' : '▸ Show'} year-by-year
@@ -847,32 +1042,58 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
               <div className="rent-vs-grid">
                 {snapshotsExpanded && [3,6,9,12,15,18,21,24,27,30].filter(y => y <= iYrs).map(snapY => {
                   const rentAtSnap = calcRentAtYear(snapY)
-                  const utilsAtSnap = utilsTotal2 * Math.pow(1 + (utilIncreaseRate || 0) / 100, snapY)
-                  const totalAtSnap = rentAtSnap + utilsAtSnap + (rentParking || 0)
+                  const uf = Math.pow(1 + (utilIncreaseRate || 0) / 100, snapY)
+                  const ru = rentUtilities || {}
+                  const waterAtSnap   = Math.round((ru.water  || 0) * uf)
+                  const sewerAtSnap   = Math.round((ru.sewer  || 0) * uf)
+                  const trashAtSnap   = Math.round((ru.trash  || 0) * uf)
+                  const elecAtSnap    = Math.round((ru.electricity || 0) * uf)
+                  const parkingAtSnap = Math.round((rentParking || 0) * uf)
+                  const utilsAtSnap   = waterAtSnap + sewerAtSnap + trashAtSnap + elecAtSnap
+                  const totalAtSnap   = rentAtSnap + utilsAtSnap + parkingAtSnap
                   const dSavesAtSnap = dRentYearlyInvest[snapY - 1] || 0
                   const aSavesAtSnap = aRentYearlyInvest[snapY - 1] || 0
                   const dFVAtSnap = fvVariableAnnuity(dRentYearlyInvest.slice(0, snapY), investRate || 0)
+                                   + dLumpRent * Math.pow(1 + downR, snapY)
                   const aFVAtSnap = fvVariableAnnuity(aRentYearlyInvest.slice(0, snapY), investRate || 0)
+                                   + aLumpRent * Math.pow(1 + downR, snapY)
                   return (
                     <div key={snapY} className="rent-vs-detail">
                       <div className="rvd-header">
                         <span className="rvd-year">Yr {snapY}</span>
                       </div>
+                      <div className="rvd-person-block">
+                        <div className="rvd-person-row">
+                          <span className="d-color rvd-who">D</span>
+                          {dSavesAtSnap > 0
+                            ? <span className="rvd-item">saves <strong>{fmt(dSavesAtSnap)}/mo</strong></span>
+                            : dSavesAtSnap < 0
+                              ? <span className="rvd-item pool-draw-item">draws <strong>{fmt(Math.abs(dSavesAtSnap))}/mo</strong></span>
+                              : <span className="rvd-item">saves <strong>—</strong></span>}
+                          <span className="rvd-item">portfolio <strong className="d-color">{fmt(dFVAtSnap)}</strong></span>
+                        </div>
+                        <div className="rvd-sub">rent −{fmt(Math.round(totalAtSnap - Math.min(aRentBudgetAtYear(snapY), totalAtSnap)))}/mo</div>
+                      </div>
+                      <div className="rvd-person-block">
+                        <div className="rvd-person-row">
+                          <span className="a-color rvd-who">A</span>
+                          {aSavesAtSnap > 0
+                            ? <span className="rvd-item">saves <strong>{fmt(aSavesAtSnap)}/mo</strong></span>
+                            : aSavesAtSnap < 0
+                              ? <span className="rvd-item pool-draw-item">draws <strong>{fmt(Math.abs(aSavesAtSnap))}/mo</strong></span>
+                              : <span className="rvd-item">saves <strong>—</strong></span>}
+                          <span className="rvd-item">portfolio <strong className="a-color">{fmt(aFVAtSnap)}</strong></span>
+                        </div>
+                        <div className="rvd-sub">rent −{fmt(Math.round(Math.min(aRentBudgetAtYear(snapY), totalAtSnap)))}/mo</div>
+                      </div>
                       <div className="rvd-cost-line">
                         {fmt(rentAtSnap)} rent
-                        {utilsAtSnap > 0 ? ` · ${fmt(utilsAtSnap)} utils` : ''}
-                        {(rentParking || 0) > 0 ? ` · ${fmt(rentParking)} park` : ''}
+                        {waterAtSnap > 0 ? ` · ${fmt(waterAtSnap)} water` : ''}
+                        {sewerAtSnap > 0 ? ` · ${fmt(sewerAtSnap)} sewer` : ''}
+                        {trashAtSnap > 0 ? ` · ${fmt(trashAtSnap)} trash` : ''}
+                        {elecAtSnap  > 0 ? ` · ${fmt(elecAtSnap)} electric` : ''}
+                        {parkingAtSnap > 0 ? ` · ${fmt(parkingAtSnap)} park` : ''}
                         {' = '}<strong>{fmt(totalAtSnap)}/mo</strong>
-                      </div>
-                      <div className="rvd-person-row">
-                        <span className="d-color rvd-who">D</span>
-                        <span className="rvd-item">saves <strong>{dSavesAtSnap > 0 ? `${fmt(dSavesAtSnap)}/mo` : '—'}</strong></span>
-                        <span className="rvd-item">portfolio <strong className="d-color">{fmt(dFVAtSnap)}</strong></span>
-                      </div>
-                      <div className="rvd-person-row">
-                        <span className="a-color rvd-who">A</span>
-                        <span className="rvd-item">saves <strong>{aSavesAtSnap > 0 ? `${fmt(aSavesAtSnap)}/mo` : '—'}</strong></span>
-                        <span className="rvd-item">portfolio <strong className="a-color">{fmt(aFVAtSnap)}</strong></span>
                       </div>
                     </div>
                   )
@@ -885,10 +1106,12 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
               </div>
               <div className="rent-vs-verdict">
                 Combined pool {fmt(dRentInvestFV + aRentInvestFV)}
+                <span className="invest-combined-today"> · {fmt(Math.round((dRentInvestFV + aRentInvestFV) / inflFactorRY))} today</span>
                 <span style={{ fontSize: '0.72rem', color: '#9ca3af', display: 'block', marginTop: 2 }}>
                   incl. full cash invested (D {fmt(dLumpRentFV)} · A {fmt(aLumpRentFV)})
                 </span>
               </div>
+
             </div>
           </div>
         )}
@@ -908,7 +1131,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
               <span className="retire-label">Spending target</span>
               <span className="retire-val">{fmt(spendingCap || 0)}/mo today</span>
             </div>
-            <div className="retire-snap-header">🏠 Stay in US</div>
+            <div className="retire-snap-header">Option 1 · 🏠 Stay in US</div>
             <div className="retire-housing-snaps">
               <div className="retire-snap-cols-header">
                 <span />
@@ -924,12 +1147,14 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                   <div key={y} className="retire-overseas-group">
                     <div className="retire-housing-snap-row">
                       <span className="retire-snap-yr">Age {(currentAge || 33) + y}</span>
-                      <span className="retire-val">-{fmt(housing)}/mo</span>
-                      <span className="retire-pool-stack">
+                      <span className="retire-snap-cell">
+                        <span className="retire-val">-{fmt(housing)}/mo</span>
+                      </span>
+                      <span className="retire-snap-cell">
                         <span className="retire-val">-{fmt(afterHousing)}/mo</span>
                         <span className="retire-pool-real">-{fmt(afterHousingReal)} today</span>
                       </span>
-                      <span className="retire-pool-stack">
+                      <span className="retire-snap-cell">
                         {poolRemaining >= 0 ? (
                           <>
                             <span className="retire-val">{fmt(poolRemaining)}</span>
@@ -938,13 +1163,15 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                         ) : <span className="retire-pool-empty">Depleted</span>}
                       </span>
                     </div>
-                    <div className="retire-rental-breakdown">
-                      {housingBreakdown.pi > 0 && <span>−{fmt(housingBreakdown.pi)} P&amp;I</span>}
-                      {housingBreakdown.tax > 0 && <span>−{fmt(housingBreakdown.tax)} tax</span>}
-                      {housingBreakdown.hoa > 0 && <span>−{fmt(housingBreakdown.hoa)} HOA</span>}
-                      {housingBreakdown.insurance > 0 && <span>−{fmt(housingBreakdown.insurance)} ins</span>}
-                      {housingBreakdown.utils > 0 && <span>−{fmt(housingBreakdown.utils)} utils</span>}
-                      {housingBreakdown.mortgagePaidOff && <span style={{color:'#10b981'}}>✓ paid off</span>}
+                    <div className="rvd-cost-line" style={{ marginTop: 2 }}>
+                      {[
+                        housingBreakdown.pi > 0 ? `${fmt(housingBreakdown.pi)} P&I` : '',
+                        housingBreakdown.tax > 0 ? `${fmt(housingBreakdown.tax)} tax` : '',
+                        housingBreakdown.hoa > 0 ? `${fmt(housingBreakdown.hoa)} ${baseMaintenanceMonthly > 0 ? 'repairs' : 'HOA'}` : '',
+                        housingBreakdown.insurance > 0 ? `${fmt(housingBreakdown.insurance)} ins` : '',
+                        housingBreakdown.utils > 0 ? `${fmt(housingBreakdown.utils)} utils` : '',
+                      ].filter(Boolean).join(' · ')}
+                      {housingBreakdown.mortgagePaidOff && <span style={{color:'#10b981'}}> · ✓ paid off</span>}
                     </div>
                   </div>
                 )
@@ -952,7 +1179,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
             </div>
 
             <div className="retire-snap-header retire-overseas-header" style={{ marginTop: 8 }}>
-              <span>🌏 Overseas · {fmt(overseasSpendingCap || 0)}/mo spend today</span>
+              <span>Option 2 · 🌏 Overseas · {fmt(overseasSpendingCap || 0)}/mo spend today</span>
               <label className="retire-rent-input-label">
                 🏠 rent out $
                 <input
@@ -988,15 +1215,15 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                     {/* Main row */}
                     <div className="retire-housing-snap-row">
                       <span className="retire-snap-yr">Age {(currentAge || 33) + y}</span>
-                      <span className="retire-pool-stack">
+                      <span className="retire-snap-cell">
                         <span className="retire-val">-{fmt(overseasHousingNominal)}/mo</span>
                         <span className="retire-pool-real">-{fmt(overseasHousingToday)} today</span>
                       </span>
-                      <span className="retire-pool-stack">
+                      <span className="retire-snap-cell">
                         <span className="retire-val">-{fmt(overseasAfterHousing)}/mo</span>
                         <span className="retire-pool-real">-{fmt(overseasSpendingCap || 0)} today</span>
                       </span>
-                      <span className="retire-pool-stack">
+                      <span className="retire-snap-cell">
                         {overseasPoolRemaining >= 0 ? (
                           <>
                             <span className="retire-val">{fmt(overseasPoolRemaining)}</span>
@@ -1016,7 +1243,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                     <div className="retire-rental-breakdown">
                       {rentalBreakdown.pi > 0 && <span>−{fmt(rentalBreakdown.pi)} P&amp;I</span>}
                       <span>−{fmt(rentalBreakdown.tax)} tax</span>
-                      {rentalBreakdown.hoa > 0 && <span>−{fmt(rentalBreakdown.hoa)} HOA</span>}
+                      {rentalBreakdown.hoa > 0 && <span>−{fmt(rentalBreakdown.hoa)} {baseMaintenanceMonthly > 0 ? 'repairs' : 'HOA'}</span>}
                       {rentalBreakdown.insurance > 0 && <span>−{fmt(rentalBreakdown.insurance)} ins</span>}
                       {rentalBreakdown.utils > 0 && <span>−{fmt(rentalBreakdown.utils)} utils</span>}
                     </div>
@@ -1036,7 +1263,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
 
             {/* Rent-path overseas section */}
             <div className="retire-snap-header" style={{ marginTop: 10 }}>
-              🌏 Overseas · rent path · {fmt(overseasSpendingCap || 0)}/mo spend today
+              Option 3 · 🌏 Overseas · rent path · {fmt(overseasSpendingCap || 0)}/mo spend today
             </div>
             <div className="retire-combined-row">
               <span className="retire-label">Rent path pool at Yr {rY}</span>
@@ -1056,15 +1283,15 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                 return (
                   <div key={y} className="retire-housing-snap-row">
                     <span className="retire-snap-yr">Age {(currentAge || 33) + y}</span>
-                    <span className="retire-pool-stack">
+                    <span className="retire-snap-cell">
                       <span className="retire-val">-{fmt(overseasHousingNominal)}/mo</span>
                       <span className="retire-pool-real">-{fmt(overseasHousingToday)} today</span>
                     </span>
-                    <span className="retire-pool-stack">
+                    <span className="retire-snap-cell">
                       <span className="retire-val">-{fmt(overseasAfterHousing)}/mo</span>
                       <span className="retire-pool-real">-{fmt(overseasSpendingCap || 0)} today</span>
                     </span>
-                    <span className="retire-pool-stack">
+                    <span className="retire-snap-cell">
                       {rentOverseasPoolRemaining >= 0 ? (
                         <>
                           <span className="retire-val">{fmt(rentOverseasPoolRemaining)}</span>
@@ -1077,6 +1304,231 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
               })}
             </div>
             <div className="retire-note">No rental income — renting in US, moving overseas</div>
+
+            {/* Keep renting in US — rent path */}
+            <div className="retire-snap-header" style={{ marginTop: 10 }}>
+              Option 4 · 🏘 Keep Renting in US · {fmt(spendingCap || 0)}/mo spend today
+            </div>
+            <div className="retire-combined-row">
+              <span className="retire-label">Rent path pool at Yr {rY}</span>
+              <span className="retire-val">{fmt(rentCombinedPoolAtRetire)}</span>
+            </div>
+            <div className="retire-housing-snaps">
+              <div className="retire-snap-cols-header">
+                <span />
+                <span>Rent</span>
+                <span>From pool · today</span>
+                <span>Pool left</span>
+              </div>
+              {retireHousingSnaps.map(({ y, rentUSHousingMonthly, rentUSAfterHousing, rentUSPoolRemaining, rentUSPoolReal }) => {
+                const inflFactorY = Math.pow(1 + (inflationRate || 3) / 100, y)
+                const rentUSHousingToday = rentUSHousingMonthly / inflFactorY
+                const rentUSAfterToday = rentUSAfterHousing / inflFactorY
+                return (
+                  <div key={y} className="retire-housing-snap-row">
+                    <span className="retire-snap-yr">Age {(currentAge || 33) + y}</span>
+                    <span className="retire-snap-cell">
+                      <span className="retire-val">-{fmt(Math.round(rentUSHousingMonthly))}/mo</span>
+                      <span className="retire-pool-real">-{fmt(Math.round(rentUSHousingToday))} today</span>
+                    </span>
+                    <span className="retire-snap-cell">
+                      <span className="retire-val">-{fmt(Math.round(rentUSAfterHousing))}/mo</span>
+                      <span className="retire-pool-real">-{fmt(Math.round(rentUSAfterToday))} today</span>
+                    </span>
+                    <span className="retire-snap-cell">
+                      {rentUSPoolRemaining >= 0 ? (
+                        <>
+                          <span className="retire-val">{fmt(rentUSPoolRemaining)}</span>
+                          <span className="retire-pool-real">{fmt(rentUSPoolReal)} today</span>
+                        </>
+                      ) : <span className="retire-pool-empty">Depleted</span>}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="retire-note">Rent continues to grow — no house equity, full portfolio invested</div>
+
+            {/* Sell & Relocate — buy path sells the house and moves */}
+            <div className="retire-snap-header" style={{ marginTop: 10 }}>
+              Option 5 · 🏡 Sell &amp; Relocate · {fmt(relocateMonthlyCost || 0)}/mo housing today
+            </div>
+            <div className="retire-combined-row">
+              <span className="retire-label">Buy path pool at Yr {rY}</span>
+              <span className="retire-val">{fmt(combinedPortRetire)}</span>
+            </div>
+            <div className="retire-combined-row">
+              <span className="retire-label">+ Sale proceeds (~94% of {fmt(Math.round(retireAppreciatedPrice))})</span>
+              <span className="retire-val" style={{ color: '#22c55e' }}>+{fmt(Math.round(sellProceeds))}</span>
+            </div>
+            <div className="retire-combined-row" style={{ borderTop: '1px solid #334155', paddingTop: 4, marginTop: 2 }}>
+              <span className="retire-label">Total starting pool</span>
+              <span className="retire-val">{fmt(Math.round(sellRelocateStartPool))}</span>
+            </div>
+            <div className="retire-housing-snaps">
+              <div className="retire-snap-cols-header">
+                <span />
+                <span>Housing</span>
+                <span>From pool · today</span>
+                <span>Pool left</span>
+              </div>
+              {retireHousingSnaps.map(({ y, sellRelocateHousingMonthly, sellRelocateAfterHousing, sellRelocatePoolRemaining, sellRelocatePoolReal }) => {
+                const inflFactorY = Math.pow(1 + (inflationRate || 3) / 100, y)
+                const sellRelocateHousingToday = sellRelocateHousingMonthly / inflFactorY
+                const sellRelocateAfterToday = sellRelocateAfterHousing / inflFactorY
+                return (
+                  <div key={y} className="retire-housing-snap-row">
+                    <span className="retire-snap-yr">Age {(currentAge || 33) + y}</span>
+                    <span className="retire-snap-cell">
+                      <span className="retire-val">-{fmt(Math.round(sellRelocateHousingMonthly))}/mo</span>
+                      <span className="retire-pool-real">-{fmt(Math.round(sellRelocateHousingToday))} today</span>
+                    </span>
+                    <span className="retire-snap-cell">
+                      <span className="retire-val">-{fmt(Math.round(sellRelocateAfterHousing))}/mo</span>
+                      <span className="retire-pool-real">-{fmt(Math.round(sellRelocateAfterToday))} today</span>
+                    </span>
+                    <span className="retire-snap-cell">
+                      {sellRelocatePoolRemaining >= 0 ? (
+                        <>
+                          <span className="retire-val">{fmt(Math.round(sellRelocatePoolRemaining))}</span>
+                          <span className="retire-pool-real">{fmt(Math.round(sellRelocatePoolReal))} today</span>
+                        </>
+                      ) : <span className="retire-pool-empty">Depleted</span>}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="retire-note">Sell at retirement · add proceeds to pool · no more housing costs from equity</div>
+
+            {/* Sell & Buy — sell current house, buy new home at new location */}
+            <div className="retire-snap-header" style={{ marginTop: 10 }}>
+              Option 6 · 🏠 Sell &amp; Buy · {fmt(Math.round(newHomePriceNominal))} new home · {relocateBuyDownPct}% down
+            </div>
+            <div className="retire-combined-row">
+              <span className="retire-label">Buy path pool at Yr {rY}</span>
+              <span className="retire-val">{fmt(combinedPortRetire)}</span>
+            </div>
+            <div className="retire-combined-row">
+              <span className="retire-label">+ Sale proceeds (~94% of {fmt(Math.round(retireAppreciatedPrice))})</span>
+              <span className="retire-val" style={{ color: '#22c55e' }}>+{fmt(Math.round(sellProceeds))}</span>
+            </div>
+            <div className="retire-combined-row">
+              <span className="retire-label">− New home down ({relocateBuyDownPct}% of {fmt(Math.round(newHomePriceNominal))})</span>
+              <span className="retire-val" style={{ color: '#f87171' }}>-{fmt(Math.round(newHomeDownAmt))}</span>
+            </div>
+            <div className="retire-combined-row" style={{ borderTop: '1px solid #334155', paddingTop: 4, marginTop: 2 }}>
+              <span className="retire-label">Net pool after purchase</span>
+              <span className="retire-val" style={{ color: sellBuyStartPool < 0 ? '#f87171' : undefined }}>
+                {sellBuyStartPool < 0 ? `-${fmt(Math.round(Math.abs(sellBuyStartPool)))}` : fmt(Math.round(sellBuyStartPool))}
+              </span>
+            </div>
+            <div className="retire-combined-row">
+              <span className="retire-label">Monthly P&amp;I ({fmt(Math.round(newHomePI))}) · tax · maint</span>
+              <span className="retire-val">-{fmt(Math.round(newHomePI + newHomeTaxBase + newHomeMainBase))}/mo</span>
+            </div>
+            <div className="retire-housing-snaps">
+              <div className="retire-snap-cols-header">
+                <span />
+                <span>Housing</span>
+                <span>From pool · today</span>
+                <span>Pool left</span>
+              </div>
+              {retireHousingSnaps.map(({ y, sellBuyHousingMonthly, sellBuyAfterHousing, sellBuyPoolRemaining, sellBuyPoolReal }) => {
+                const inflFactorY = Math.pow(1 + (inflationRate || 3) / 100, y)
+                const sellBuyHousingToday = sellBuyHousingMonthly / inflFactorY
+                const sellBuyAfterToday = sellBuyAfterHousing / inflFactorY
+                return (
+                  <div key={y} className="retire-housing-snap-row">
+                    <span className="retire-snap-yr">Age {(currentAge || 33) + y}</span>
+                    <span className="retire-snap-cell">
+                      <span className="retire-val">-{fmt(Math.round(sellBuyHousingMonthly))}/mo</span>
+                      <span className="retire-pool-real">-{fmt(Math.round(sellBuyHousingToday))} today</span>
+                    </span>
+                    <span className="retire-snap-cell">
+                      <span className="retire-val">-{fmt(Math.round(sellBuyAfterHousing))}/mo</span>
+                      <span className="retire-pool-real">-{fmt(Math.round(sellBuyAfterToday))} today</span>
+                    </span>
+                    <span className="retire-snap-cell">
+                      {sellBuyPoolRemaining >= 0 ? (
+                        <>
+                          <span className="retire-val">{fmt(Math.round(sellBuyPoolRemaining))}</span>
+                          <span className="retire-pool-real">{fmt(Math.round(sellBuyPoolReal))} today</span>
+                        </>
+                      ) : <span className="retire-pool-empty">Depleted</span>}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="retire-note">30-yr mortgage at {relocateMortgageRate}% · tax + maint grow over time · mortgage paid off at age {(currentAge || 33) + rY + 30}</div>
+
+            {/* Sell & Buy All Cash */}
+            <div className="retire-snap-header" style={{ marginTop: 10 }}>
+              Option 7 · 💰 Sell &amp; Buy All Cash · {fmt(Math.round(newHomePriceNominal))} new home
+            </div>
+            <div className="retire-combined-row">
+              <span className="retire-label">Buy path pool at Yr {rY}</span>
+              <span className="retire-val">{fmt(combinedPortRetire)}</span>
+            </div>
+            <div className="retire-combined-row">
+              <span className="retire-label">+ Sale proceeds (~94% of {fmt(Math.round(retireAppreciatedPrice))})</span>
+              <span className="retire-val" style={{ color: '#22c55e' }}>+{fmt(Math.round(sellProceeds))}</span>
+            </div>
+            <div className="retire-combined-row">
+              <span className="retire-label">− Full purchase price (all cash)</span>
+              <span className="retire-val" style={{ color: '#f87171' }}>-{fmt(Math.round(newHomePriceNominal))}</span>
+            </div>
+            <div className="retire-combined-row" style={{ borderTop: '1px solid #334155', paddingTop: 4, marginTop: 2 }}>
+              <span className="retire-label">Net pool after purchase</span>
+              <span className="retire-val" style={{ color: sellBuyCashStartPool < 0 ? '#f87171' : undefined }}>
+                {sellBuyCashStartPool < 0 ? `-${fmt(Math.round(Math.abs(sellBuyCashStartPool)))}` : fmt(Math.round(sellBuyCashStartPool))}
+              </span>
+            </div>
+            <div className="retire-combined-row">
+              <span className="retire-label">Monthly housing: tax + maint only (no mortgage)</span>
+              <span className="retire-val">-{fmt(Math.round(newHomeTaxBase + newHomeMainBase))}/mo</span>
+            </div>
+            {sellBuyCashStartPool < combinedPortRetire + sellBuyNetProceeds && (
+              <div className="retire-note" style={{ color: '#22c55e' }}>
+                vs Option 6: pool is {fmt(Math.round(Math.abs(sellBuyCashStartPool - sellBuyStartPool)))} smaller but saves {fmt(Math.round(newHomePI))}/mo on mortgage
+              </div>
+            )}
+            <div className="retire-housing-snaps">
+              <div className="retire-snap-cols-header">
+                <span />
+                <span>Housing</span>
+                <span>From pool · today</span>
+                <span>Pool left</span>
+              </div>
+              {retireHousingSnaps.map(({ y, sellBuyCashHousingMonthly, sellBuyCashAfterHousing, sellBuyCashPoolRemaining, sellBuyCashPoolReal }) => {
+                const inflFactorY = Math.pow(1 + (inflationRate || 3) / 100, y)
+                const sellBuyCashHousingToday = sellBuyCashHousingMonthly / inflFactorY
+                const sellBuyCashAfterToday = sellBuyCashAfterHousing / inflFactorY
+                return (
+                  <div key={y} className="retire-housing-snap-row">
+                    <span className="retire-snap-yr">Age {(currentAge || 33) + y}</span>
+                    <span className="retire-snap-cell">
+                      <span className="retire-val">-{fmt(Math.round(sellBuyCashHousingMonthly))}/mo</span>
+                      <span className="retire-pool-real">-{fmt(Math.round(sellBuyCashHousingToday))} today</span>
+                    </span>
+                    <span className="retire-snap-cell">
+                      <span className="retire-val">-{fmt(Math.round(sellBuyCashAfterHousing))}/mo</span>
+                      <span className="retire-pool-real">-{fmt(Math.round(sellBuyCashAfterToday))} today</span>
+                    </span>
+                    <span className="retire-snap-cell">
+                      {sellBuyCashPoolRemaining >= 0 ? (
+                        <>
+                          <span className="retire-val">{fmt(Math.round(sellBuyCashPoolRemaining))}</span>
+                          <span className="retire-pool-real">{fmt(Math.round(sellBuyCashPoolReal))} today</span>
+                        </>
+                      ) : <span className="retire-pool-empty">Depleted</span>}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="retire-note">No mortgage · only tax + maintenance · full purchase price paid at retirement</div>
           </div>
         )}
 

@@ -219,6 +219,7 @@ export default function App() {
   const [refiTermYears, setRefiTermYears] = useState(prefs.refiTermYears ?? 30)
   const [dBudget, setDBudget] = useState(prefs.dBudget ?? 3750)
   const [aBudget, setABudget] = useState(prefs.aBudget ?? 1500)
+  const [aBudgetIncrease, setABudgetIncrease] = useState(prefs.aBudgetIncrease ?? 2)
   const [investRate, setInvestRate] = useState(prefs.investRate ?? 7)
   const [retireMode, setRetireMode] = useState(prefs.retireMode ?? 'elsewhere')
   const [rentYield, setRentYield] = useState(prefs.rentYield ?? 2)
@@ -245,19 +246,26 @@ export default function App() {
   })
   const [utilIncreaseRate, setUtilIncreaseRate] = useState(prefs.utilIncreaseRate ?? 3)
   const [retireYear, setRetireYear] = useState(prefs.retireYear ?? 30)
+  const [retireMaxAge, setRetireMaxAge] = useState(prefs.retireMaxAge ?? 100)
   const [inflationRate, setInflationRate] = useState(prefs.inflationRate ?? 3)
   const [currentAge, setCurrentAge] = useState(prefs.currentAge ?? 33)
   const [spendingCap, setSpendingCap] = useState(prefs.spendingCap ?? 8000)
   const [overseasCost, setOverseasCost] = useState(prefs.overseasCost ?? 2500)
   const [overseasSpendingCap, setOverseasSpendingCap] = useState(prefs.overseasSpendingCap ?? 5000)
+  const [relocateMonthlyCost, setRelocateMonthlyCost] = useState(prefs.relocateMonthlyCost ?? 2000)
+  const [relocateBuyPrice, setRelocateBuyPrice] = useState(prefs.relocateBuyPrice ?? 400000)
+  const [relocateBuyDownPct, setRelocateBuyDownPct] = useState(prefs.relocateBuyDownPct ?? 20)
+  const [relocateMortgageRate, setRelocateMortgageRate] = useState(prefs.relocateMortgageRate ?? 7)
   const [overseasRentIncrease, setOverseasRentIncrease] = useState(prefs.overseasRentIncrease ?? 2)
   const [usRentalIncrease, setUsRentalIncrease] = useState(prefs.usRentalIncrease ?? 3)
   const [colRatio, setColRatio] = useState(prefs.colRatio ?? 40)
+  const [bedFilter, setBedFilter] = useState(prefs.bedFilter ?? 2)
+  const [maintenancePct, setMaintenancePct] = useState(prefs.maintenancePct ?? 1)
 
   // Persist UI prefs to localStorage
   useEffect(() => {
-    savePrefs({ dCashBudget, aCashBudget, dDown, aDown, aMonthlyAdj, equalizeYears, saleYear, appreciationPct, taxIncreasePct, hoaIncreasePct, insuranceIncreasePct, refiYear, refiRate, refiTermYears, dBudget, aBudget, investRate, retireMode, rentYield, rentProfitMinYear, rent1BR, rent2BR, rentUpgradeTo2BR, rentIncreaseRate, rentMoveEvery, rentMarketGrowth, rentParking, utilities, rentUtilities, utilIncreaseRate, retireYear, inflationRate, currentAge, spendingCap, overseasCost, overseasSpendingCap, overseasRentIncrease, usRentalIncrease, colRatio })
-  }, [dCashBudget, aCashBudget, dDown, aDown, aMonthlyAdj, equalizeYears, saleYear, appreciationPct, taxIncreasePct, hoaIncreasePct, insuranceIncreasePct, refiYear, refiRate, refiTermYears, dBudget, aBudget, investRate, retireMode, rentYield, rentProfitMinYear, rent1BR, rent2BR, rentUpgradeTo2BR, rentIncreaseRate, rentMoveEvery, rentMarketGrowth, rentParking, utilities, rentUtilities, utilIncreaseRate, retireYear, inflationRate, currentAge, spendingCap, overseasCost, overseasSpendingCap, overseasRentIncrease, usRentalIncrease, colRatio])
+    savePrefs({ dCashBudget, aCashBudget, dDown, aDown, aMonthlyAdj, equalizeYears, saleYear, appreciationPct, taxIncreasePct, hoaIncreasePct, insuranceIncreasePct, refiYear, refiRate, refiTermYears, dBudget, aBudget, aBudgetIncrease, investRate, retireMode, rentYield, rentProfitMinYear, rent1BR, rent2BR, rentUpgradeTo2BR, rentIncreaseRate, rentMoveEvery, rentMarketGrowth, rentParking, utilities, rentUtilities, utilIncreaseRate, retireYear, retireMaxAge, inflationRate, currentAge, spendingCap, overseasCost, overseasSpendingCap, overseasRentIncrease, usRentalIncrease, colRatio, bedFilter, maintenancePct, relocateMonthlyCost, relocateBuyPrice, relocateBuyDownPct, relocateMortgageRate })
+  }, [dCashBudget, aCashBudget, dDown, aDown, aMonthlyAdj, equalizeYears, saleYear, appreciationPct, taxIncreasePct, hoaIncreasePct, insuranceIncreasePct, refiYear, refiRate, refiTermYears, dBudget, aBudget, aBudgetIncrease, investRate, retireMode, rentYield, rentProfitMinYear, rent1BR, rent2BR, rentUpgradeTo2BR, rentIncreaseRate, rentMoveEvery, rentMarketGrowth, rentParking, utilities, rentUtilities, utilIncreaseRate, retireYear, retireMaxAge, inflationRate, currentAge, spendingCap, overseasCost, overseasSpendingCap, overseasRentIncrease, usRentalIncrease, colRatio, bedFilter, maintenancePct, relocateMonthlyCost, relocateBuyPrice, relocateBuyDownPct, relocateMortgageRate])
 
   // Load houses from Google Sheets on mount; seed defaults if sheet is empty
   useEffect(() => {
@@ -394,6 +402,7 @@ export default function App() {
           refiTermYears={refiTermYears} setRefiTermYears={setRefiTermYears}
           dBudget={dBudget} setDBudget={setDBudget}
           aBudget={aBudget} setABudget={setABudget}
+          aBudgetIncrease={aBudgetIncrease} setABudgetIncrease={setABudgetIncrease}
           investRate={investRate} setInvestRate={setInvestRate}
           retireMode={retireMode} setRetireMode={setRetireMode}
           rentYield={rentYield} setRentYield={setRentYield}
@@ -409,14 +418,20 @@ export default function App() {
           rentUtilities={rentUtilities} setRentUtilities={setRentUtilities}
           utilIncreaseRate={utilIncreaseRate} setUtilIncreaseRate={setUtilIncreaseRate}
           retireYear={retireYear} setRetireYear={setRetireYear}
+          retireMaxAge={retireMaxAge} setRetireMaxAge={setRetireMaxAge}
           inflationRate={inflationRate} setInflationRate={setInflationRate}
           currentAge={currentAge} setCurrentAge={setCurrentAge}
           spendingCap={spendingCap} setSpendingCap={setSpendingCap}
           overseasCost={overseasCost} setOverseasCost={setOverseasCost}
           overseasSpendingCap={overseasSpendingCap} setOverseasSpendingCap={setOverseasSpendingCap}
+          relocateMonthlyCost={relocateMonthlyCost} setRelocateMonthlyCost={setRelocateMonthlyCost}
+          relocateBuyPrice={relocateBuyPrice} setRelocateBuyPrice={setRelocateBuyPrice}
+          relocateBuyDownPct={relocateBuyDownPct} setRelocateBuyDownPct={setRelocateBuyDownPct}
+          relocateMortgageRate={relocateMortgageRate} setRelocateMortgageRate={setRelocateMortgageRate}
           overseasRentIncrease={overseasRentIncrease} setOverseasRentIncrease={setOverseasRentIncrease}
           usRentalIncrease={usRentalIncrease} setUsRentalIncrease={setUsRentalIncrease}
           colRatio={colRatio} setColRatio={setColRatio}
+          maintenancePct={maintenancePct} setMaintenancePct={setMaintenancePct}
           closingCostPct={CLOSING_COST_PCT}
         />
       </aside>
@@ -450,8 +465,20 @@ export default function App() {
         ) : (
           <>
 
+            <div className="cards-toolbar">
+              <div className="bed-filter">
+                {[{ v: 0, label: 'All' }, { v: 1, label: '1 BR' }, { v: 2, label: '2 BR' }, { v: 3, label: '3+ BR' }].map(({ v, label }) => (
+                  <button
+                    key={v}
+                    className={`bed-filter-btn${bedFilter === v ? ' active' : ''}`}
+                    onClick={() => setBedFilter(v)}
+                  >{label}</button>
+                ))}
+              </div>
+            </div>
+
             <div className="cards-grid">
-              {[...houses].sort((a, b) => {
+              {[...houses].filter(h => bedFilter === 0 || (bedFilter === 3 ? h.beds >= 3 : h.beds === bedFilter)).sort((a, b) => {
                 const aMonthly = h => Math.max(0,
                   calcAMonthlyFromOwnership(h, dDown, aDown, CLOSING_COST_PCT, 50, utilities) + aMonthlyAdj
                 )
@@ -476,6 +503,7 @@ export default function App() {
                   refiTermYears={refiTermYears}
                   dBudget={dBudget}
                   aBudget={aBudget}
+                  aBudgetIncrease={aBudgetIncrease}
                   investRate={investRate}
                   retireMode={retireMode}
                   rentYield={rentYield}
@@ -491,14 +519,20 @@ export default function App() {
                   rentUtilities={rentUtilities}
                   utilIncreaseRate={utilIncreaseRate}
                   retireYear={retireYear}
+                  retireMaxAge={retireMaxAge}
                   inflationRate={inflationRate}
                   currentAge={currentAge}
                   spendingCap={spendingCap}
                   overseasCost={overseasCost}
                   overseasSpendingCap={overseasSpendingCap}
                   overseasRentIncrease={overseasRentIncrease}
+                  relocateMonthlyCost={relocateMonthlyCost}
+                  relocateBuyPrice={relocateBuyPrice}
+                  relocateBuyDownPct={relocateBuyDownPct}
+                  relocateMortgageRate={relocateMortgageRate}
                   usRentalIncrease={usRentalIncrease}
                   colRatio={colRatio}
+                  maintenancePct={maintenancePct}
                   snapshotsExpanded={snapshotsExpanded}
                   onToggleSnapshots={() => setSnapshotsExpanded(v => !v)}
                   onEdit={() => openEdit(house)}
