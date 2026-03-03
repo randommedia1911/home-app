@@ -385,6 +385,27 @@ export default function App() {
       {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
       <aside className={`sidebar${sidebarOpen ? ' sidebar-open' : ''}`}>
         <button className="sidebar-close-btn" onClick={() => setSidebarOpen(false)} aria-label="Close settings">✕</button>
+        <div style={{ display: 'flex', gap: 8, padding: '0 12px 12px', borderBottom: '1px solid #334155', marginBottom: 8 }}>
+          <button
+            style={{ flex: 1, padding: '7px 0', background: '#1e3a5f', color: '#93c5fd', border: '1px solid #2563eb', borderRadius: 6, fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}
+            onClick={() => {
+              const json = localStorage.getItem(PREFS_KEY) || '{}'
+              navigator.clipboard.writeText(json).then(() => alert('Settings copied to clipboard! Paste into Import on the other device/site.'))
+            }}
+          >📋 Export Settings</button>
+          <button
+            style={{ flex: 1, padding: '7px 0', background: '#1a2e1a', color: '#86efac', border: '1px solid #16a34a', borderRadius: 6, fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}
+            onClick={() => {
+              const raw = prompt('Paste exported settings JSON:')
+              if (!raw) return
+              try {
+                JSON.parse(raw)
+                localStorage.setItem(PREFS_KEY, raw)
+                window.location.reload()
+              } catch { alert('Invalid JSON — please paste the full exported settings.') }
+            }}
+          >📥 Import Settings</button>
+        </div>
         <GlobalControls
           dCashBudget={dCashBudget} setDCashBudget={setDCashBudget}
           aCashBudget={aCashBudget} setACashBudget={setACashBudget}
