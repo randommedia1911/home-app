@@ -239,6 +239,48 @@
 .year-btn:hover { background: #e0e7ff; color: #4338ca; }
 .year-btn.active { background: #6366f1; color: #fff; border-color: #6366f1; }
 
+.tax-strategy-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.tax-strategy-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: #111827;
+  border: 1.5px solid #374151;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.73rem;
+  font-family: inherit;
+  color: #9ca3af;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+  opacity: 0.7;
+}
+.tax-strategy-btn:hover { border-color: #6366f1; background: #1e1b4b; opacity: 1; color: #d1d5db; }
+.tax-strategy-btn.active {
+  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+  border: 2px solid #6366f1;
+  box-shadow: 0 0 0 2px rgba(99,102,241,0.25), inset 0 1px 0 rgba(255,255,255,0.05);
+  color: #fff;
+  opacity: 1;
+}
+.tsb-top { display: flex; justify-content: space-between; align-items: center; }
+.tsb-label { font-weight: 700; color: #9ca3af; }
+.tax-strategy-btn.active .tsb-label { color: #fff; font-size: 0.76rem; }
+.tsb-pct { font-weight: 700; color: #6366f1; font-size: 0.7rem; }
+.tax-strategy-btn.active .tsb-pct { color: #c7d2fe; background: rgba(99,102,241,0.2); padding: 1px 6px; border-radius: 4px; }
+.tsb-accounts { font-size: 0.68rem; color: #6b7280; }
+.tax-strategy-btn.active .tsb-accounts { color: #a5b4fc; }
+.tsb-how { font-size: 0.67rem; color: #4b5563; line-height: 1.3; }
+.tax-strategy-btn.active .tsb-how { color: #818cf8; }
+.tsb-boost { font-size: 0.67rem; color: #34d399; margin-top: 1px; }
+.tsb-rates { font-size: 0.65rem; color: #4b5563; margin-top: 2px; font-weight: 500; }
+.tax-strategy-btn.active .tsb-rates { color: #a5b4fc; }
+
 .retire-toggle {
   display: flex;
   gap: 6px;

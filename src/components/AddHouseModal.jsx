@@ -17,6 +17,8 @@ const defaults = {
   beds: '',
   baths: '',
   sqft: '',
+  renovationBudget: 60000,
+  isTownhome: false,
   notes: '',
 }
 
@@ -71,6 +73,8 @@ export default function AddHouseModal({ initial, onSave, onClose }) {
       hoaMonthly: Number(form.hoaMonthly) || 0,
       insuranceMonthly: Number(form.insuranceMonthly) || 0,
       monthlyRent: Number(form.monthlyRent) || 0,
+      renovationBudget: Number(form.renovationBudget) || 0,
+      isTownhome: !!form.isTownhome,
         beds: form.beds !== '' ? Number(form.beds) : '',
         baths: form.baths !== '' ? Number(form.baths) : '',
         sqft: form.sqft !== '' ? Number(form.sqft) : '',
@@ -188,6 +192,28 @@ export default function AddHouseModal({ initial, onSave, onClose }) {
                 HOA (monthly $) <span className="required">*</span>
                 <input type="number" required min="0" placeholder="0" value={form.hoaMonthly} onChange={e => set('hoaMonthly', e.target.value)} />
               </label>
+              <label style={{ alignSelf: 'end', paddingBottom: 6 }}>
+                Property type
+                <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                  {[{ label: '🏠 SFH / Condo', value: false }, { label: '🏘 Townhome', value: true }].map(({ label, value }) => (
+                    <button
+                      key={String(value)}
+                      type="button"
+                      onClick={() => set('isTownhome', value)}
+                      style={{
+                        padding: '5px 12px', borderRadius: 6, fontSize: '0.78rem', cursor: 'pointer',
+                        fontWeight: 600, border: '1px solid',
+                        background: form.isTownhome === value ? (value ? 'rgba(6,78,59,0.9)' : 'rgba(30,58,138,0.9)') : 'rgba(30,41,59,0.6)',
+                        borderColor: form.isTownhome === value ? (value ? '#10b981' : '#60a5fa') : '#475569',
+                        color: form.isTownhome === value ? (value ? '#6ee7b7' : '#bfdbfe') : '#94a3b8',
+                      }}
+                    >{label}</button>
+                  ))}
+                </div>
+                <span style={{ fontSize: '0.68rem', color: '#6b7280', marginTop: 4, display: 'block' }}>
+                  {form.isTownhome ? 'Water & trash included in HOA — excluded from utility costs' : 'Water & trash billed separately'}
+                </span>
+              </label>
               <label>
                 Insurance (monthly $) <span className="required">*</span>
                 <input type="number" required min="0" placeholder="120" value={form.insuranceMonthly} onChange={e => set('insuranceMonthly', e.target.value)} />
@@ -196,6 +222,11 @@ export default function AddHouseModal({ initial, onSave, onClose }) {
                 Rental price/mo ($) <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>optional</span>
                 <input type="number" min="0" placeholder="e.g. 3500" value={form.monthlyRent} onChange={e => set('monthlyRent', e.target.value)} />
               </label>
+              <label>
+                🔨 Renovation budget ($)
+                <input type="number" min="0" step="1000" placeholder="0" value={form.renovationBudget} onChange={e => set('renovationBudget', e.target.value)} />
+              </label>
+              <span style={{ fontSize: '0.78rem', color: '#9ca3af' }}>🏦 Rolled into loan (added to mortgage principal)</span>
             </div>
           </div>
 

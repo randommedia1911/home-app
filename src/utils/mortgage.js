@@ -18,7 +18,7 @@ export function calcTotalMonthly(house, dDown, aDown, closingCostPct, aMonthlyTa
   const totalCash     = dDown + aDown
   const closingCosts  = house.price * (closingCostPct / 100)
   const actualDownPmt = Math.max(0, totalCash - closingCosts)
-  const loanAmount    = house.price - actualDownPmt
+  const loanAmount    = house.price - actualDownPmt + (house.renovationBudget || 0)
 
   const pi          = calcMonthlyPI(loanAmount, house.interestRate, house.loanTermYears)
   const tax         = (house.propertyTaxAnnual || 0) / 12
@@ -112,7 +112,7 @@ export function calcAMonthlyFromOwnership(house, dDown, aDown, closingCostPct, d
   const totalCash     = dDown + aDown
   const closingCosts  = house.price * (closingCostPct / 100)
   const actualDownPmt = Math.max(0, totalCash - closingCosts)
-  const loanAmount    = house.price - actualDownPmt
+  const loanAmount    = house.price - actualDownPmt + (house.renovationBudget || 0)
 
   const pi         = calcMonthlyPI(loanAmount, house.interestRate, house.loanTermYears)
   const tax        = (house.propertyTaxAnnual || 0) / 12
