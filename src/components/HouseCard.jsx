@@ -134,6 +134,8 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
       water: (effectiveUtilities.water || 0) * utilFactor,
       trash: (effectiveUtilities.trash || 0) * utilFactor,
       electricity: (effectiveUtilities.electricity || 0) * utilFactor,
+      waterInHoa: effectiveUtilities.waterInHoa,
+      trashInHoa: effectiveUtilities.trashInHoa,
     }
     const phBase = {
       ...house,
@@ -213,7 +215,9 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
     let dDrawFromRothGains = 0, dDrawFromLump = 0
     let aDrawFromRoth = 0, aDrawFromBrokerage = 0, aDrawTax = 0, aBrkPrincipalDraw = 0, aBrkGainsDraw = 0
     let aSpillFromDRoth = 0, aSpillFromDBrokerage = 0, aSpillDTax = 0
+    let aSpillFromDLump = 0, aSpillFromDRothGains = 0
     let dSpillCashOffset = 0  // D's cash leftover applied toward A's gap before touching D's buckets
+    let dRothReductionForSpill = 0, dBrkReductionForSpill = 0
 
     const drawFromBuckets = (gap, isD) => {
       // Returns { fromRoth, fromRothGains, fromBrokerage, brkPrincipalDraw, brkGainsDraw, fromLump, tax, remaining }
@@ -299,18 +303,32 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
         // Only the amount beyond D's cash goes to D's buckets.
         const dCashOffset = Math.min(dLeftover > 0 ? dLeftover * 12 : 0, rA.remaining)
         dSpillCashOffset = dCashOffset
-        // Reduce D's bucket contributions by the cash offset (D can't invest what it's giving to A)
-        const dRothReduction = Math.min(dRothAlloc * 12, dCashOffset)
-        const dBrkReduction  = Math.min(dBrokerageAlloc * 12, dCashOffset - dRothReduction)
+
+        // Recompute D's net investable after giving cash to A
+        const dNetInvestable = Math.max(0, dLeftover - dCashOffset / 12)
+        const dRothAllocNet     = Math.min(dRothCap, dNetInvestable)
+        const dTradAllocNet     = Math.min(dTradFixed, Math.max(0, dNetInvestable - dRothAllocNet))
+        const dBrokerageAllocNet = Math.max(0, dNetInvestable - dRothAllocNet - dTradAllocNet)
+
+        // Undo the over-allocation that was added at the top of the loop
+        const dRothReduction = (dRothAlloc - dRothAllocNet) * 12
+        const dBrkReduction  = (dBrokerageAlloc - dBrokerageAllocNet) * 12
+        dRothReductionForSpill = dRothReduction
+        dBrkReductionForSpill  = dBrkReduction
         dRothContribBalance   -= dRothReduction
         dRothTotalBalance     -= dRothReduction
         dBrokerageBalance     -= dBrkReduction
         dBrokerageBasis       -= dBrkReduction
+        // Also fix the yearly arrays (used for retirement FV calculations)
+        dYearlyRoth[dYearlyRoth.length - 1]           = dRothAllocNet
+        dYearlyBrokerage[dYearlyBrokerage.length - 1] = dBrokerageAllocNet
         const spillAfterCash = rA.remaining - dCashOffset
         if (spillAfterCash > 0) {
           const rD = drawFromBuckets(spillAfterCash, true)
           aSpillFromDRoth = rD.fromRoth
           aSpillFromDBrokerage = rD.fromBrokerage
+          aSpillFromDLump = rD.fromLump
+          aSpillFromDRothGains = rD.fromRothGains
           aSpillDTax = rD.tax
           // Add spill to D's draw totals so D's snapshot reflects it
           dDrawFromRoth += rD.fromRoth
@@ -386,6 +404,111 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
     const dSpendDeficit = dSpendRemaining
     const dSpendBrkDraw = dSpendBrkPrincipalDraw + dSpendBrkGainsDraw
 
+    // ── A's spend cascade (same priority order as D) ──
+    const aRothContribPreSpend   = aRothContribBalance
+    const aRothGainsPreSpend     = Math.max(0, aRothTotalBalance - aRothContribBalance)
+    const aBrkGainsPreSpend      = Math.max(0, aBrokerageBalance - aBrokerageBasis)
+    const aBrkPrincipalPreSpend  = aBrokerageBasis
+    const aSpendDraw = Math.max(0, (aSpendNominal - Math.max(0, (aIncome || 0) - (aBudget || 0))) * 12)
+    const aActualHYSADraw = Math.min(aSpendDraw, aHYSABalance)
+    const aHYSAPreDraw = aHYSABalance
+    aHYSABalance = Math.max(0, aHYSABalance - aActualHYSADraw)
+    let aSpendRemaining = aSpendDraw - aActualHYSADraw
+
+    let aSpendRothDraw = 0
+    if (aSpendRemaining > 0) {
+      aSpendRothDraw = Math.min(aRothContribBalance, aSpendRemaining)
+      aSpendRemaining -= aSpendRothDraw
+      aRothContribBalance = Math.max(0, aRothContribBalance - aSpendRothDraw)
+      aRothTotalBalance   = Math.max(0, aRothTotalBalance   - aSpendRothDraw)
+    }
+
+    let aSpendBrkPrincipalDraw = 0, aSpendBrkGainsDraw = 0, aSpendBrkTax = 0
+    if (aSpendRemaining > 0) {
+      aSpendBrkPrincipalDraw = Math.min(aBrokerageBasis, aSpendRemaining)
+      aSpendRemaining -= aSpendBrkPrincipalDraw
+      aSpendBrkGainsDraw = Math.min(Math.max(0, aBrokerageBalance - aBrokerageBasis), aSpendRemaining)
+      aSpendRemaining -= aSpendBrkGainsDraw
+      aSpendBrkTax = aSpendBrkGainsDraw * (capitalGainsTaxPct || 0) / 100
+      const totalBrkDraw = aSpendBrkPrincipalDraw + aSpendBrkGainsDraw
+      aBrokerageBalance = Math.max(0, aBrokerageBalance - totalBrkDraw)
+      aBrokerageBasis   = Math.max(0, aBrokerageBasis   - aSpendBrkPrincipalDraw)
+    }
+
+    let aSpendRothGainsDraw = 0
+    if (aSpendRemaining > 0 && ageAtY >= 59.5) {
+      const availableRothGains = Math.max(0, aRothTotalBalance - aRothContribBalance)
+      aSpendRothGainsDraw = Math.min(availableRothGains, aSpendRemaining)
+      aSpendRemaining -= aSpendRothGainsDraw
+      aRothTotalBalance = Math.max(0, aRothTotalBalance - aSpendRothGainsDraw)
+    }
+
+    let aSpendLumpPrincipalDraw = 0, aSpendLumpGainsDraw = 0, aSpendLumpTax = 0
+    if (aSpendRemaining > 0 && aLumpBalance > 0) {
+      const lumpGains = Math.max(0, aLumpBalance - aLumpBasis)
+      aSpendLumpPrincipalDraw = Math.min(aLumpBasis, aSpendRemaining)
+      aSpendRemaining -= aSpendLumpPrincipalDraw
+      aSpendLumpGainsDraw = Math.min(lumpGains, aSpendRemaining)
+      aSpendRemaining -= aSpendLumpGainsDraw
+      aSpendLumpTax = aSpendLumpGainsDraw * (capitalGainsTaxPct || 0) / 100
+      const totalLumpDraw = aSpendLumpPrincipalDraw + aSpendLumpGainsDraw
+      aLumpBalance = Math.max(0, aLumpBalance - totalLumpDraw)
+      aLumpBasis   = Math.max(0, aLumpBasis   - aSpendLumpPrincipalDraw)
+    }
+
+    const aSpendBrkDraw = aSpendBrkPrincipalDraw + aSpendBrkGainsDraw
+    const aLumpPreSpend = aLumpBalance + (aSpendLumpPrincipalDraw + aSpendLumpGainsDraw)
+
+    // ── D covers A's spending deficit (A's buckets fully depleted) ──
+    let dSpendForA_hysa = 0, dSpendForA_roth = 0, dSpendForA_brkPrincipal = 0, dSpendForA_brkGains = 0
+    let dSpendForA_brkTax = 0, dSpendForA_rothGains = 0, dSpendForA_lumpPrincipal = 0, dSpendForA_lumpGains = 0, dSpendForA_lumpTax = 0
+    let dSpendForA_total = 0
+    if (aSpendRemaining > 0) {
+      let rem = aSpendRemaining
+      // HYSA
+      dSpendForA_hysa = Math.min(dHYSABalance, rem)
+      dHYSABalance = Math.max(0, dHYSABalance - dSpendForA_hysa)
+      rem -= dSpendForA_hysa
+      // Roth contributions
+      if (rem > 0) {
+        dSpendForA_roth = Math.min(dRothContribBalance, rem)
+        rem -= dSpendForA_roth
+        dRothContribBalance = Math.max(0, dRothContribBalance - dSpendForA_roth)
+        dRothTotalBalance   = Math.max(0, dRothTotalBalance   - dSpendForA_roth)
+      }
+      // Brokerage principal then gains
+      if (rem > 0 && dBrokerageBalance > 0) {
+        dSpendForA_brkPrincipal = Math.min(dBrokerageBasis, rem)
+        rem -= dSpendForA_brkPrincipal
+        dSpendForA_brkGains = Math.min(Math.max(0, dBrokerageBalance - dBrokerageBasis), rem)
+        rem -= dSpendForA_brkGains
+        dSpendForA_brkTax = dSpendForA_brkGains * (capitalGainsTaxPct || 0) / 100
+        dBrokerageBalance = Math.max(0, dBrokerageBalance - dSpendForA_brkPrincipal - dSpendForA_brkGains)
+        dBrokerageBasis   = Math.max(0, dBrokerageBasis   - dSpendForA_brkPrincipal)
+      }
+      // Roth gains (if 59½+)
+      if (rem > 0 && ageAtY >= 59.5) {
+        const availGains = Math.max(0, dRothTotalBalance - dRothContribBalance)
+        dSpendForA_rothGains = Math.min(availGains, rem)
+        rem -= dSpendForA_rothGains
+        dRothTotalBalance = Math.max(0, dRothTotalBalance - dSpendForA_rothGains)
+      }
+      // Lump (principal then gains)
+      if (rem > 0 && dLumpBalance > 0) {
+        const lumpGains = Math.max(0, dLumpBalance - dLumpBasis)
+        dSpendForA_lumpPrincipal = Math.min(dLumpBasis, rem)
+        rem -= dSpendForA_lumpPrincipal
+        dSpendForA_lumpGains = Math.min(lumpGains, rem)
+        rem -= dSpendForA_lumpGains
+        dSpendForA_lumpTax = dSpendForA_lumpGains * (capitalGainsTaxPct || 0) / 100
+        dLumpBalance = Math.max(0, dLumpBalance - dSpendForA_lumpPrincipal - dSpendForA_lumpGains)
+        dLumpBasis   = Math.max(0, dLumpBasis   - dSpendForA_lumpPrincipal)
+      }
+      dSpendForA_total = dSpendForA_hysa + dSpendForA_roth + dSpendForA_brkPrincipal + dSpendForA_brkGains + dSpendForA_rothGains + dSpendForA_lumpPrincipal + dSpendForA_lumpGains
+      aSpendRemaining = rem
+    }
+    const aSpendDeficit = aSpendRemaining
+
     // Save end-of-year bucket snapshots
     // During accumulation, accessible portfolio = Roth contributions (can withdraw penalty-free) + Brokerage
     // Roth earnings are locked until retirement — shown separately
@@ -407,17 +530,32 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
       portfolio: dRothContribBalance + dBrokerageBalance,
       drawFromRoth: dDrawFromRoth, drawFromRothGains: dDrawFromRothGains, drawFromBrokerage: dDrawFromBrokerage, drawTax: dDrawTax,
       brkPrincipalDraw: dBrkPrincipalDraw, brkGainsDraw: dBrkGainsDraw, drawFromLump: dDrawFromLump,
-      rothAlloc: dRothAlloc, brokerageAlloc: dBrokerageAlloc,
+      rothAlloc: Math.max(0, dRothAlloc - dRothReductionForSpill / 12),
+      brokerageAlloc: Math.max(0, dBrokerageAlloc - dBrkReductionForSpill / 12),
       spillCashOffset: dSpillCashOffset,
+      spendForA: dSpendForA_total,
+      spendForA_hysa: dSpendForA_hysa, spendForA_roth: dSpendForA_roth,
+      spendForA_brkPrincipal: dSpendForA_brkPrincipal, spendForA_brkGains: dSpendForA_brkGains, spendForA_brkTax: dSpendForA_brkTax,
+      spendForA_rothGains: dSpendForA_rothGains,
+      spendForA_lumpPrincipal: dSpendForA_lumpPrincipal, spendForA_lumpGains: dSpendForA_lumpGains, spendForA_lumpTax: dSpendForA_lumpTax,
     })
     aBucketSnapshots.push({
       roth: aRothContribBalance, rothTotal: aRothTotalBalance, rothEarnings: aRothEarnings,
       brokerage: aBrokerageBalance, brokerageBasis: aBrokerageBasis,
-      hysa: aHYSABalance, hysaMonthly: aHYSAMonthly,
+      hysa: aHYSABalance, hysaMonthly: aHYSAMonthly, hysaSpendDraw: aActualHYSADraw, hysaPreDraw: aHYSAPreDraw,
+      brkGainsPreSpend: aBrkGainsPreSpend, brkPrincipalPreSpend: aBrkPrincipalPreSpend,
+      rothContribPreSpend: aRothContribPreSpend, rothGainsPreSpend: aRothGainsPreSpend,
+      spendBrkDraw: aSpendBrkDraw, spendBrkPrincipal: aSpendBrkPrincipalDraw, spendBrkGains: aSpendBrkGainsDraw, spendBrkTax: aSpendBrkTax,
+      spendRothDraw: aSpendRothDraw, spendRothGainsDraw: aSpendRothGainsDraw, spendDeficit: aSpendDeficit,
+      spendCoveredByD: dSpendForA_total,
+      lump: aLumpBalance, lumpBasis: aLumpBasis, lumpPreSpend: aLumpPreSpend,
+      spendLumpPrincipal: aSpendLumpPrincipalDraw, spendLumpGains: aSpendLumpGainsDraw, spendLumpTax: aSpendLumpTax,
       portfolio: aRothContribBalance + aBrokerageBalance,
+      rothAlloc: aRothAlloc, brokerageAlloc: aBrokerageAlloc,
       drawFromRoth: aDrawFromRoth, drawFromBrokerage: aDrawFromBrokerage, drawTax: aDrawTax,
       brkPrincipalDraw: aBrkPrincipalDraw, brkGainsDraw: aBrkGainsDraw,
       spillFromDRoth: aSpillFromDRoth, spillFromDBrokerage: aSpillFromDBrokerage, spillDTax: aSpillDTax,
+      spillFromDLump: aSpillFromDLump, spillFromDRothGains: aSpillFromDRothGains,
       spillCashOffset: dSpillCashOffset,
     })
 
@@ -506,18 +644,6 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
     }
   }
 
-  const dRentYearlyInvest = []
-  const aRentYearlyInvest = []
-  for (let y = 1; y <= iYrs; y++) {
-    const rentAtY = calcRentAtYear(y)
-    const utilsAtY = utilsTotal2 * Math.pow(1 + (utilIncreaseRate || 0) / 100, y)  // rent utils grow same rate
-    const totalRentCost = rentAtY + utilsAtY + (rentParking || 0)
-    const aRentPays = Math.min(aRentBudgetAtYear(y), totalRentCost)
-    const dRentPays = totalRentCost - aRentPays
-    // Allow negative: when rent > income cap, D draws from portfolio
-    dRentYearlyInvest.push((dBudget || 0) - dRentPays)
-    aRentYearlyInvest.push(Math.max(0, (aBudget || 0) - aRentPays))
-  }
   // Lump sum invested = cash not spent on down payment, compounded over iYrs
   const downR = (investRate || 0) / 100
   const dLumpBuy  = Math.max(0, (dCashBudget || 0) - (dDown || 0))  // buy: leftover cash
@@ -528,8 +654,350 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
   const aLumpBuyFV  = aLumpBuy  * Math.pow(1 + downR, iYrs)
   const dLumpRentFV = dLumpRent * Math.pow(1 + downR, iYrs)
   const aLumpRentFV = aLumpRent * Math.pow(1 + downR, iYrs)
-  const dRentInvestFV = fvVariableAnnuity(dRentYearlyInvest, investRate || 0) + dLumpRentFV
-  const aRentInvestFV = fvVariableAnnuity(aRentYearlyInvest, investRate || 0) + aLumpRentFV
+
+  // ── Rent path: bucket-by-bucket simulation (mirrors buy path) ──
+  const dRentYearlyInvest = []
+  const aRentYearlyInvest = []
+  let rD_rothContrib = 0, rD_rothTotal = 0, rD_brokerage = 0, rD_brkBasis = 0
+  let rA_rothContrib = 0, rA_rothTotal = 0, rA_brokerage = 0, rA_brkBasis = 0
+  let rD_hysa = 0, rA_hysa = 0
+  let rD_lump = dLumpRent, rA_lump = aLumpRent
+  let rD_lumpBasis = dLumpRent, rA_lumpBasis = aLumpRent
+  const dRentBucketSnapshots = []
+  const aRentBucketSnapshots = []
+
+  for (let y = 1; y <= iYrs; y++) {
+    const rentAtY = calcRentAtYear(y)
+    const uf = Math.pow(1 + (utilIncreaseRate || 0) / 100, y)
+    const totalRentCost = rentAtY + utilsTotal2 * uf + (rentParking || 0) * uf
+    const aRentPays = Math.min(aRentBudgetAtYear(y), totalRentCost)
+    const dRentPays = totalRentCost - aRentPays
+    dRentYearlyInvest.push((dBudget || 0) - dRentPays)
+    aRentYearlyInvest.push(Math.max(0, (aBudget || 0) - aRentPays))
+
+    const rD_leftover = (dBudget || 0) - dRentPays
+    const rA_leftover = (aBudget || 0) - aRentPays
+
+    const rD_rothAlloc = Math.min(dRothCap, Math.max(0, rD_leftover))
+    const rD_brkAlloc  = Math.max(0, rD_leftover - rD_rothAlloc)
+    const rA_rothAlloc = Math.min(aRothCap, Math.max(0, rA_leftover))
+    const rA_brkAlloc  = Math.max(0, rA_leftover - rA_rothAlloc)
+
+    const rGr = (investRate || 0) / 100
+    rD_rothContrib += rD_rothAlloc * 12
+    rD_rothTotal = rD_rothTotal * (1 + rGr) + rD_rothAlloc * 12
+    rD_brokerage = rD_brokerage * (1 + rGr) + rD_brkAlloc * 12
+    rD_brkBasis += rD_brkAlloc * 12
+    rA_rothContrib += rA_rothAlloc * 12
+    rA_rothTotal = rA_rothTotal * (1 + rGr) + rA_rothAlloc * 12
+    rA_brokerage = rA_brokerage * (1 + rGr) + rA_brkAlloc * 12
+    rA_brkBasis += rA_brkAlloc * 12
+
+    const rHysaGr = (hysaRate || 3) / 100
+    const rD_spendInflFactor = Math.pow(1 + (spendInflationRate || 3) / 100, y)
+    const rD_spendNominal = (spendingCap || 0) * rD_spendInflFactor
+    const rA_spendNominal = (aSpendingCap || 0) * rD_spendInflFactor
+    const rD_hysaMonthly = Math.max(0, (dIncome || 0) - (dBudget || 0) - rD_spendNominal)
+    const rA_hysaMonthly = Math.max(0, (aIncome || 0) - (aBudget || 0) - rA_spendNominal)
+    rD_hysa = rD_hysa * (1 + rHysaGr) + rD_hysaMonthly * 12
+    rA_hysa = rA_hysa * (1 + rHysaGr) + rA_hysaMonthly * 12
+    rD_lump = rD_lump * (1 + rGr)
+    rA_lump = rA_lump * (1 + rGr)
+
+    const rAgeAtY = (currentAge || 33) + y
+    const rRothGainsUnlocked = rAgeAtY >= 59.5
+
+    // Housing overage cascade (same priority as buy path)
+    const rDrawFromBuckets = (gap, isD) => {
+      let remaining = gap
+      let fromRoth = 0, fromRothGains = 0, fromBrokerage = 0, brkPrincipalDraw = 0, brkGainsDraw = 0, fromLump = 0, tax = 0
+
+      const rothCBal = isD ? rD_rothContrib : rA_rothContrib
+      fromRoth = Math.min(rothCBal, remaining)
+      remaining -= fromRoth
+      if (isD) { rD_rothContrib -= fromRoth; rD_rothTotal -= fromRoth }
+      else     { rA_rothContrib -= fromRoth; rA_rothTotal -= fromRoth }
+
+      const brkBal = isD ? rD_brokerage : rA_brokerage
+      const brkBas = isD ? rD_brkBasis : rA_brkBasis
+      if (remaining > 0 && brkBal > 0) {
+        const actualDraw = Math.min(brkBal, remaining)
+        brkPrincipalDraw = Math.min(brkBas, actualDraw)
+        brkGainsDraw = actualDraw - brkPrincipalDraw
+        tax += brkGainsDraw * (capitalGainsTaxPct || 0) / 100
+        fromBrokerage = actualDraw
+        remaining = Math.max(0, remaining - actualDraw)
+        if (isD) { rD_brokerage = Math.max(0, rD_brokerage - actualDraw); rD_brkBasis = Math.max(0, rD_brkBasis - brkPrincipalDraw) }
+        else     { rA_brokerage = Math.max(0, rA_brokerage - actualDraw); rA_brkBasis = Math.max(0, rA_brkBasis - brkPrincipalDraw) }
+      }
+
+      if (remaining > 0 && rRothGainsUnlocked) {
+        const rothTBal = isD ? rD_rothTotal : rA_rothTotal
+        const rothC2   = isD ? rD_rothContrib : rA_rothContrib
+        const availGains = Math.max(0, rothTBal - rothC2)
+        fromRothGains = Math.min(availGains, remaining)
+        remaining -= fromRothGains
+        if (isD) { rD_rothTotal = Math.max(0, rD_rothTotal - fromRothGains) }
+        else     { rA_rothTotal = Math.max(0, rA_rothTotal - fromRothGains) }
+      }
+
+      if (remaining > 0) {
+        const lb = isD ? rD_lump : rA_lump
+        const lbBas = isD ? rD_lumpBasis : rA_lumpBasis
+        if (lb > 0) {
+          const lumpActual = Math.min(lb, remaining)
+          const lumpP = Math.min(lbBas, lumpActual)
+          tax += (lumpActual - lumpP) * (capitalGainsTaxPct || 0) / 100
+          fromLump = lumpActual
+          remaining = Math.max(0, remaining - lumpActual)
+          if (isD) { rD_lump = Math.max(0, rD_lump - lumpActual); rD_lumpBasis = Math.max(0, rD_lumpBasis - lumpP) }
+          else     { rA_lump = Math.max(0, rA_lump - lumpActual); rA_lumpBasis = Math.max(0, rA_lumpBasis - lumpP) }
+        }
+      }
+
+      return { fromRoth, fromRothGains, fromBrokerage, brkPrincipalDraw, brkGainsDraw, fromLump, tax, remaining }
+    }
+
+    const rD_gap = rD_leftover < 0 ? Math.abs(rD_leftover) * 12 : 0
+    const rA_gap = rA_leftover < 0 ? Math.abs(rA_leftover) * 12 : 0
+    const rD_rothContribPreHousing = rD_rothContrib
+    const rD_rothGainsPreHousing   = Math.max(0, rD_rothTotal - rD_rothContrib)
+    const rD_brkGainsPreHousing    = Math.max(0, rD_brokerage - rD_brkBasis)
+    const rD_brkPrincipalPreHousing = rD_brkBasis
+    let rD_drawFromRoth = 0, rD_drawFromRothGains = 0, rD_drawFromBrk = 0, rD_drawTax = 0
+    let rD_brkPDraw = 0, rD_brkGDraw = 0, rD_drawFromLump = 0
+    let rA_drawFromRoth = 0, rA_drawFromBrk = 0, rA_drawTax = 0, rA_brkPDraw = 0, rA_brkGDraw = 0
+    let rA_spillFromDRoth = 0, rA_spillFromDBrk = 0, rA_spillDTax = 0
+    let rA_spillFromDLump = 0, rA_spillFromDRothGains = 0
+    let rD_spillCashOffset = 0, rD_rothRedForSpill = 0, rD_brkRedForSpill = 0
+
+    if (rD_gap > 0) {
+      const r = rDrawFromBuckets(rD_gap, true)
+      rD_drawFromRoth = r.fromRoth; rD_drawFromRothGains = r.fromRothGains
+      rD_drawFromBrk = r.fromBrokerage; rD_brkPDraw = r.brkPrincipalDraw
+      rD_brkGDraw = r.brkGainsDraw; rD_drawFromLump = r.fromLump; rD_drawTax = r.tax
+    }
+
+    if (rA_gap > 0) {
+      const rA = rDrawFromBuckets(rA_gap, false)
+      rA_drawFromRoth = rA.fromRoth; rA_drawFromBrk = rA.fromBrokerage
+      rA_brkPDraw = rA.brkPrincipalDraw; rA_brkGDraw = rA.brkGainsDraw; rA_drawTax = rA.tax
+      if (rA.remaining > 0) {
+        const dCashOff = Math.min(rD_leftover > 0 ? rD_leftover * 12 : 0, rA.remaining)
+        rD_spillCashOffset = dCashOff
+        const dNetInv = Math.max(0, rD_leftover - dCashOff / 12)
+        const dRothNet = Math.min(dRothCap, dNetInv)
+        const dBrkNet  = Math.max(0, dNetInv - dRothNet)
+        const dRothRed = (rD_rothAlloc - dRothNet) * 12
+        const dBrkRed  = (rD_brkAlloc - dBrkNet) * 12
+        rD_rothRedForSpill = dRothRed; rD_brkRedForSpill = dBrkRed
+        rD_rothContrib -= dRothRed; rD_rothTotal -= dRothRed
+        rD_brokerage -= dBrkRed; rD_brkBasis -= dBrkRed
+        const spillAfterCash = rA.remaining - dCashOff
+        if (spillAfterCash > 0) {
+          const rD2 = rDrawFromBuckets(spillAfterCash, true)
+          rA_spillFromDRoth = rD2.fromRoth; rA_spillFromDBrk = rD2.fromBrokerage
+          rA_spillFromDLump = rD2.fromLump; rA_spillFromDRothGains = rD2.fromRothGains
+          rA_spillDTax = rD2.tax
+          rD_drawFromRoth += rD2.fromRoth; rD_drawFromRothGains += rD2.fromRothGains
+          rD_drawFromBrk += rD2.fromBrokerage; rD_brkPDraw += rD2.brkPrincipalDraw
+          rD_brkGDraw += rD2.brkGainsDraw; rD_drawFromLump += rD2.fromLump; rD_drawTax += rD2.tax
+        }
+      }
+    }
+
+    // D's spend cascade
+    const rD_rothContribPreSpend = rD_rothContrib
+    const rD_rothGainsPreSpend   = Math.max(0, rD_rothTotal - rD_rothContrib)
+    const rD_brkGainsPreSpend    = Math.max(0, rD_brokerage - rD_brkBasis)
+    const rD_brkPrincipalPreSpend = rD_brkBasis
+    const rD_lumpPreSpend = rD_lump
+    const rD_spendDraw = Math.max(0, (rD_spendNominal - Math.max(0, (dIncome || 0) - (dBudget || 0))) * 12)
+    const rD_hysaPreDraw = rD_hysa
+    const rD_actualHYSADraw = Math.min(rD_spendDraw, rD_hysa)
+    rD_hysa = Math.max(0, rD_hysa - rD_actualHYSADraw)
+    let rD_spendRem = rD_spendDraw - rD_actualHYSADraw
+
+    let rD_spendRothDraw = 0
+    if (rD_spendRem > 0) { rD_spendRothDraw = Math.min(rD_rothContrib, rD_spendRem); rD_spendRem -= rD_spendRothDraw; rD_rothContrib = Math.max(0, rD_rothContrib - rD_spendRothDraw); rD_rothTotal = Math.max(0, rD_rothTotal - rD_spendRothDraw) }
+
+    let rD_spendBrkP = 0, rD_spendBrkG = 0, rD_spendBrkTax = 0
+    if (rD_spendRem > 0) {
+      rD_spendBrkP = Math.min(rD_brkBasis, rD_spendRem); rD_spendRem -= rD_spendBrkP
+      rD_spendBrkG = Math.min(Math.max(0, rD_brokerage - rD_brkBasis), rD_spendRem); rD_spendRem -= rD_spendBrkG
+      rD_spendBrkTax = rD_spendBrkG * (capitalGainsTaxPct || 0) / 100
+      rD_brokerage = Math.max(0, rD_brokerage - rD_spendBrkP - rD_spendBrkG)
+      rD_brkBasis  = Math.max(0, rD_brkBasis - rD_spendBrkP)
+    }
+
+    let rD_spendRothGainsDraw = 0
+    if (rD_spendRem > 0 && rAgeAtY >= 59.5) { const avail = Math.max(0, rD_rothTotal - rD_rothContrib); rD_spendRothGainsDraw = Math.min(avail, rD_spendRem); rD_spendRem -= rD_spendRothGainsDraw; rD_rothTotal = Math.max(0, rD_rothTotal - rD_spendRothGainsDraw) }
+
+    let rD_spendLumpP = 0, rD_spendLumpG = 0, rD_spendLumpTax = 0
+    if (rD_spendRem > 0 && rD_lump > 0) {
+      const g = Math.max(0, rD_lump - rD_lumpBasis)
+      rD_spendLumpP = Math.min(rD_lumpBasis, rD_spendRem); rD_spendRem -= rD_spendLumpP
+      rD_spendLumpG = Math.min(g, rD_spendRem); rD_spendRem -= rD_spendLumpG
+      rD_spendLumpTax = rD_spendLumpG * (capitalGainsTaxPct || 0) / 100
+      rD_lump = Math.max(0, rD_lump - rD_spendLumpP - rD_spendLumpG)
+      rD_lumpBasis = Math.max(0, rD_lumpBasis - rD_spendLumpP)
+    }
+    const rD_spendDeficit = rD_spendRem
+
+    // A's spend cascade
+    const rA_rothContribPreSpend = rA_rothContrib
+    const rA_rothGainsPreSpend   = Math.max(0, rA_rothTotal - rA_rothContrib)
+    const rA_brkGainsPreSpend    = Math.max(0, rA_brokerage - rA_brkBasis)
+    const rA_brkPrincipalPreSpend = rA_brkBasis
+    const rA_lumpPreSpend = rA_lump
+    const rA_spendDraw = Math.max(0, (rA_spendNominal - Math.max(0, (aIncome || 0) - (aBudget || 0))) * 12)
+    const rA_hysaPreDraw = rA_hysa
+    const rA_actualHYSADraw = Math.min(rA_spendDraw, rA_hysa)
+    rA_hysa = Math.max(0, rA_hysa - rA_actualHYSADraw)
+    let rA_spendRem = rA_spendDraw - rA_actualHYSADraw
+
+    let rA_spendRothDraw = 0
+    if (rA_spendRem > 0) { rA_spendRothDraw = Math.min(rA_rothContrib, rA_spendRem); rA_spendRem -= rA_spendRothDraw; rA_rothContrib = Math.max(0, rA_rothContrib - rA_spendRothDraw); rA_rothTotal = Math.max(0, rA_rothTotal - rA_spendRothDraw) }
+
+    let rA_spendBrkP = 0, rA_spendBrkG = 0, rA_spendBrkTax = 0
+    if (rA_spendRem > 0) {
+      rA_spendBrkP = Math.min(rA_brkBasis, rA_spendRem); rA_spendRem -= rA_spendBrkP
+      rA_spendBrkG = Math.min(Math.max(0, rA_brokerage - rA_brkBasis), rA_spendRem); rA_spendRem -= rA_spendBrkG
+      rA_spendBrkTax = rA_spendBrkG * (capitalGainsTaxPct || 0) / 100
+      rA_brokerage = Math.max(0, rA_brokerage - rA_spendBrkP - rA_spendBrkG)
+      rA_brkBasis  = Math.max(0, rA_brkBasis - rA_spendBrkP)
+    }
+
+    let rA_spendRothGainsDraw = 0
+    if (rA_spendRem > 0 && rAgeAtY >= 59.5) { const avail = Math.max(0, rA_rothTotal - rA_rothContrib); rA_spendRothGainsDraw = Math.min(avail, rA_spendRem); rA_spendRem -= rA_spendRothGainsDraw; rA_rothTotal = Math.max(0, rA_rothTotal - rA_spendRothGainsDraw) }
+
+    let rA_spendLumpP = 0, rA_spendLumpG = 0, rA_spendLumpTax = 0
+    if (rA_spendRem > 0 && rA_lump > 0) {
+      const g = Math.max(0, rA_lump - rA_lumpBasis)
+      rA_spendLumpP = Math.min(rA_lumpBasis, rA_spendRem); rA_spendRem -= rA_spendLumpP
+      rA_spendLumpG = Math.min(g, rA_spendRem); rA_spendRem -= rA_spendLumpG
+      rA_spendLumpTax = rA_spendLumpG * (capitalGainsTaxPct || 0) / 100
+      rA_lump = Math.max(0, rA_lump - rA_spendLumpP - rA_spendLumpG)
+      rA_lumpBasis = Math.max(0, rA_lumpBasis - rA_spendLumpP)
+    }
+
+    // D covers A's spend deficit
+    let rD_spendForA_hysa = 0, rD_spendForA_roth = 0, rD_spendForA_brkP = 0, rD_spendForA_brkG = 0
+    let rD_spendForA_brkTax = 0, rD_spendForA_rothGains = 0, rD_spendForA_lumpP = 0, rD_spendForA_lumpG = 0, rD_spendForA_lumpTax = 0
+    let rD_spendForA_total = 0
+    if (rA_spendRem > 0) {
+      let rem = rA_spendRem
+      rD_spendForA_hysa = Math.min(rD_hysa, rem); rD_hysa = Math.max(0, rD_hysa - rD_spendForA_hysa); rem -= rD_spendForA_hysa
+      if (rem > 0) { rD_spendForA_roth = Math.min(rD_rothContrib, rem); rem -= rD_spendForA_roth; rD_rothContrib = Math.max(0, rD_rothContrib - rD_spendForA_roth); rD_rothTotal = Math.max(0, rD_rothTotal - rD_spendForA_roth) }
+      if (rem > 0 && rD_brokerage > 0) {
+        rD_spendForA_brkP = Math.min(rD_brkBasis, rem); rem -= rD_spendForA_brkP
+        rD_spendForA_brkG = Math.min(Math.max(0, rD_brokerage - rD_brkBasis), rem); rem -= rD_spendForA_brkG
+        rD_spendForA_brkTax = rD_spendForA_brkG * (capitalGainsTaxPct || 0) / 100
+        rD_brokerage = Math.max(0, rD_brokerage - rD_spendForA_brkP - rD_spendForA_brkG)
+        rD_brkBasis  = Math.max(0, rD_brkBasis - rD_spendForA_brkP)
+      }
+      if (rem > 0 && rAgeAtY >= 59.5) { const avail = Math.max(0, rD_rothTotal - rD_rothContrib); rD_spendForA_rothGains = Math.min(avail, rem); rem -= rD_spendForA_rothGains; rD_rothTotal = Math.max(0, rD_rothTotal - rD_spendForA_rothGains) }
+      if (rem > 0 && rD_lump > 0) {
+        const g = Math.max(0, rD_lump - rD_lumpBasis)
+        rD_spendForA_lumpP = Math.min(rD_lumpBasis, rem); rem -= rD_spendForA_lumpP
+        rD_spendForA_lumpG = Math.min(g, rem); rem -= rD_spendForA_lumpG
+        rD_spendForA_lumpTax = rD_spendForA_lumpG * (capitalGainsTaxPct || 0) / 100
+        rD_lump = Math.max(0, rD_lump - rD_spendForA_lumpP - rD_spendForA_lumpG)
+        rD_lumpBasis = Math.max(0, rD_lumpBasis - rD_spendForA_lumpP)
+      }
+      rD_spendForA_total = rD_spendForA_hysa + rD_spendForA_roth + rD_spendForA_brkP + rD_spendForA_brkG + rD_spendForA_rothGains + rD_spendForA_lumpP + rD_spendForA_lumpG
+      rA_spendRem = rem
+    }
+    const rA_spendDeficit = rA_spendRem
+
+    // ── A covers D's spending + housing deficit (D's buckets depleted) ──
+    let rA_spendForD_hysa = 0, rA_spendForD_roth = 0, rA_spendForD_brkP = 0, rA_spendForD_brkG = 0
+    let rA_spendForD_brkTax = 0, rA_spendForD_rothGains = 0, rA_spendForD_lumpP = 0, rA_spendForD_lumpG = 0, rA_spendForD_lumpTax = 0
+    let rA_spendForD_total = 0
+    if (rD_spendRem > 0) {
+      let rem = rD_spendRem
+      rA_spendForD_hysa = Math.min(rA_hysa, rem); rA_hysa = Math.max(0, rA_hysa - rA_spendForD_hysa); rem -= rA_spendForD_hysa
+      if (rem > 0) { rA_spendForD_roth = Math.min(rA_rothContrib, rem); rem -= rA_spendForD_roth; rA_rothContrib = Math.max(0, rA_rothContrib - rA_spendForD_roth); rA_rothTotal = Math.max(0, rA_rothTotal - rA_spendForD_roth) }
+      if (rem > 0 && rA_brokerage > 0) {
+        rA_spendForD_brkP = Math.min(rA_brkBasis, rem); rem -= rA_spendForD_brkP
+        rA_spendForD_brkG = Math.min(Math.max(0, rA_brokerage - rA_brkBasis), rem); rem -= rA_spendForD_brkG
+        rA_spendForD_brkTax = rA_spendForD_brkG * (capitalGainsTaxPct || 0) / 100
+        rA_brokerage = Math.max(0, rA_brokerage - rA_spendForD_brkP - rA_spendForD_brkG)
+        rA_brkBasis  = Math.max(0, rA_brkBasis - rA_spendForD_brkP)
+      }
+      if (rem > 0 && rRothGainsUnlocked) { const avail = Math.max(0, rA_rothTotal - rA_rothContrib); rA_spendForD_rothGains = Math.min(avail, rem); rem -= rA_spendForD_rothGains; rA_rothTotal = Math.max(0, rA_rothTotal - rA_spendForD_rothGains) }
+      if (rem > 0 && rA_lump > 0) {
+        const g = Math.max(0, rA_lump - rA_lumpBasis)
+        rA_spendForD_lumpP = Math.min(rA_lumpBasis, rem); rem -= rA_spendForD_lumpP
+        rA_spendForD_lumpG = Math.min(g, rem); rem -= rA_spendForD_lumpG
+        rA_spendForD_lumpTax = rA_spendForD_lumpG * (capitalGainsTaxPct || 0) / 100
+        rA_lump = Math.max(0, rA_lump - rA_spendForD_lumpP - rA_spendForD_lumpG)
+        rA_lumpBasis = Math.max(0, rA_lumpBasis - rA_spendForD_lumpP)
+      }
+      rA_spendForD_total = rA_spendForD_hysa + rA_spendForD_roth + rA_spendForD_brkP + rA_spendForD_brkG + rA_spendForD_rothGains + rA_spendForD_lumpP + rA_spendForD_lumpG
+      rD_spendRem = rem
+    }
+    const rD_finalSpendDeficit = rD_spendRem
+
+    const rD_rothEarnings = Math.max(0, rD_rothTotal - rD_rothContrib)
+    const rA_rothEarnings = Math.max(0, rA_rothTotal - rA_rothContrib)
+    dRentBucketSnapshots.push({
+      roth: rD_rothContrib, rothTotal: rD_rothTotal, rothEarnings: rD_rothEarnings,
+      brokerage: rD_brokerage, brokerageBasis: rD_brkBasis,
+      hysa: rD_hysa, hysaMonthly: rD_hysaMonthly, hysaSpendDraw: rD_actualHYSADraw, hysaPreDraw: rD_hysaPreDraw,
+      brkGainsPreHousing: rD_brkGainsPreHousing, brkPrincipalPreHousing: rD_brkPrincipalPreHousing,
+      rothContribPreHousing: rD_rothContribPreHousing, rothGainsPreHousing: rD_rothGainsPreHousing,
+      brkGainsPreSpend: rD_brkGainsPreSpend, brkPrincipalPreSpend: rD_brkPrincipalPreSpend,
+      rothContribPreSpend: rD_rothContribPreSpend, rothGainsPreSpend: rD_rothGainsPreSpend,
+      lumpPreSpend: rD_lumpPreSpend,
+      spendBrkDraw: rD_spendBrkP + rD_spendBrkG, spendBrkPrincipal: rD_spendBrkP, spendBrkGains: rD_spendBrkG, spendBrkTax: rD_spendBrkTax,
+      spendRothDraw: rD_spendRothDraw, spendRothGainsDraw: rD_spendRothGainsDraw, spendDeficit: rD_finalSpendDeficit,
+      spendCoveredByA: rA_spendForD_total,
+      lump: rD_lump, lumpBasis: rD_lumpBasis,
+      spendLumpPrincipal: rD_spendLumpP, spendLumpGains: rD_spendLumpG, spendLumpTax: rD_spendLumpTax,
+      portfolio: rD_rothContrib + rD_brokerage,
+      drawFromRoth: rD_drawFromRoth, drawFromRothGains: rD_drawFromRothGains, drawFromBrokerage: rD_drawFromBrk, drawTax: rD_drawTax,
+      brkPrincipalDraw: rD_brkPDraw, brkGainsDraw: rD_brkGDraw, drawFromLump: rD_drawFromLump,
+      rothAlloc: Math.max(0, rD_rothAlloc - rD_rothRedForSpill / 12),
+      brokerageAlloc: Math.max(0, rD_brkAlloc - rD_brkRedForSpill / 12),
+      spillCashOffset: rD_spillCashOffset,
+      spendForA: rD_spendForA_total,
+      spendForA_hysa: rD_spendForA_hysa, spendForA_roth: rD_spendForA_roth,
+      spendForA_brkPrincipal: rD_spendForA_brkP, spendForA_brkGains: rD_spendForA_brkG, spendForA_brkTax: rD_spendForA_brkTax,
+      spendForA_rothGains: rD_spendForA_rothGains,
+      spendForA_lumpPrincipal: rD_spendForA_lumpP, spendForA_lumpGains: rD_spendForA_lumpG, spendForA_lumpTax: rD_spendForA_lumpTax,
+    })
+    aRentBucketSnapshots.push({
+      roth: rA_rothContrib, rothTotal: rA_rothTotal, rothEarnings: rA_rothEarnings,
+      brokerage: rA_brokerage, brokerageBasis: rA_brkBasis,
+      hysa: rA_hysa, hysaMonthly: rA_hysaMonthly, hysaSpendDraw: rA_actualHYSADraw, hysaPreDraw: rA_hysaPreDraw,
+      brkGainsPreSpend: rA_brkGainsPreSpend, brkPrincipalPreSpend: rA_brkPrincipalPreSpend,
+      rothContribPreSpend: rA_rothContribPreSpend, rothGainsPreSpend: rA_rothGainsPreSpend,
+      spendBrkDraw: rA_spendBrkP + rA_spendBrkG, spendBrkPrincipal: rA_spendBrkP, spendBrkGains: rA_spendBrkG, spendBrkTax: rA_spendBrkTax,
+      spendRothDraw: rA_spendRothDraw, spendRothGainsDraw: rA_spendRothGainsDraw, spendDeficit: rA_spendDeficit,
+      spendCoveredByD: rD_spendForA_total,
+      spendForD: rA_spendForD_total,
+      spendForD_hysa: rA_spendForD_hysa, spendForD_roth: rA_spendForD_roth,
+      spendForD_brkPrincipal: rA_spendForD_brkP, spendForD_brkGains: rA_spendForD_brkG, spendForD_brkTax: rA_spendForD_brkTax,
+      spendForD_rothGains: rA_spendForD_rothGains,
+      spendForD_lumpPrincipal: rA_spendForD_lumpP, spendForD_lumpGains: rA_spendForD_lumpG, spendForD_lumpTax: rA_spendForD_lumpTax,
+      lump: rA_lump, lumpBasis: rA_lumpBasis, lumpPreSpend: rA_lumpPreSpend,
+      spendLumpPrincipal: rA_spendLumpP, spendLumpGains: rA_spendLumpG, spendLumpTax: rA_spendLumpTax,
+      portfolio: rA_rothContrib + rA_brokerage,
+      rothAlloc: rA_rothAlloc, brokerageAlloc: rA_brkAlloc,
+      drawFromRoth: rA_drawFromRoth, drawFromBrokerage: rA_drawFromBrk, drawTax: rA_drawTax,
+      brkPrincipalDraw: rA_brkPDraw, brkGainsDraw: rA_brkGDraw,
+      spillFromDRoth: rA_spillFromDRoth, spillFromDBrokerage: rA_spillFromDBrk, spillDTax: rA_spillDTax,
+      spillFromDLump: rA_spillFromDLump, spillFromDRothGains: rA_spillFromDRothGains,
+      spillCashOffset: rD_spillCashOffset,
+    })
+  }
+
+  // Rent path FVs — use tracked bucket totals (includes spend draws, overages, etc.)
+  const rD_lastSnap = dRentBucketSnapshots[iYrs - 1] || {}
+  const rA_lastSnap = aRentBucketSnapshots[iYrs - 1] || {}
+  const dRentInvestFV = (rD_lastSnap.rothTotal || 0) + (rD_lastSnap.brokerage || 0) + (rD_lastSnap.hysa || 0) + (rD_lastSnap.lump || 0)
+  const aRentInvestFV = (rA_lastSnap.rothTotal || 0) + (rA_lastSnap.brokerage || 0) + (rA_lastSnap.hysa || 0) + (rA_lastSnap.lump || 0)
 
   const dInvestFV = dInvestOnly + dSaleBonus + dLumpBuyFV
   const aInvestFV = aInvestOnly + aSaleBonus + aLumpBuyFV
@@ -587,12 +1055,14 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
   const dLumpAtRetire = rY <= iYrs
     ? ((dBucketSnapshots[rY - 1] || {}).lump ?? dLumpBuyFV_rY)
     : dLumpBuyFV_rY
-  const aLumpAtRetire = aLumpBuyFV_rY  // A has no separate lump simulation yet
+  const aLumpAtRetire = rY <= iYrs
+    ? ((aBucketSnapshots[rY - 1] || {}).lump ?? aLumpBuyFV_rY)
+    : aLumpBuyFV_rY
   const dPortRetire = rY <= iYrs
-    ? (((dBucketSnapshots[rY - 1] || {}).rothTotal || 0) + ((dBucketSnapshots[rY - 1] || {}).brokerage || 0)) + dLumpAtRetire + retireSaleBonus_d
+    ? (((dBucketSnapshots[rY - 1] || {}).rothTotal || 0) + ((dBucketSnapshots[rY - 1] || {}).brokerage || 0) + ((dBucketSnapshots[rY - 1] || {}).hysa || 0)) + dLumpAtRetire + retireSaleBonus_d
     : fvVariableAnnuity(retireLeftoverD.slice(0, rY), investRate || 0) + dLumpAtRetire + retireSaleBonus_d
   const aPortRetire = rY <= iYrs
-    ? (((aBucketSnapshots[rY - 1] || {}).rothTotal || 0) + ((aBucketSnapshots[rY - 1] || {}).brokerage || 0)) + aLumpAtRetire + retireSaleBonus_a
+    ? (((aBucketSnapshots[rY - 1] || {}).rothTotal || 0) + ((aBucketSnapshots[rY - 1] || {}).brokerage || 0) + ((aBucketSnapshots[rY - 1] || {}).hysa || 0)) + aLumpAtRetire + retireSaleBonus_a
     : fvVariableAnnuity(retireLeftoverA.slice(0, rY), investRate || 0) + aLumpAtRetire + retireSaleBonus_a
   // Monthly withdrawal income
   const dWithdrawal = 0  // no longer used — spending driven by spendingCap
@@ -749,12 +1219,14 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
   // Pool simulation: each year withdraw exactly (spendingCap + housing) inflation-adjusted,
   // offset by any rental income. Same target for all houses — fair comparison.
   // "Stay in house" simulation — live in owned home, pay housing + spending, no rental income
+  const combinedSpendCap = (spendingCap || 0) + (aSpendingCap || 0)
   const simPoolByOffset = [combinedPortRetire]
   for (let n = 1; n <= maxOffset; n++) {
     const yr = rY + n
     const inflFactorYr = Math.pow(1 + (inflationRate || 3) / 100, yr)
+    const spendInflFactorYr = Math.pow(1 + (spendInflationRate || 3) / 100, yr)
     const housingYr = calcCombinedHousingAtYear(yr)
-    const grossWithdrawal = ((spendingCap || 0) * taxGrossUp * inflFactorYr + housingYr) * 12
+    const grossWithdrawal = (combinedSpendCap * taxGrossUp * spendInflFactorYr + housingYr) * 12
     const netFromPool = Math.max(0, grossWithdrawal + careAtYear(yr, 'stay') - ssOffsetAtYear(yr))
     simPoolByOffset.push(simPoolByOffset[n - 1] * (1 + gr) - netFromPool)
   }
@@ -762,14 +1234,13 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
   const simPoolOverseas = [combinedPortRetire]
   for (let n = 1; n <= maxOffset; n++) {
     const yr = rY + n
-    const inflFactorYr = Math.pow(1 + (inflationRate || 3) / 100, yr)
+    const spendInflYr = Math.pow(1 + (spendInflationRate || 3) / 100, yr)
     const overseasRentFactor = Math.pow(1 + (overseasRentIncrease || 0) / 100, yr)
     const overseasHousingNominal = (overseasCost || 0) * overseasRentFactor * 12
     const netRentalYr = calcNetRentalAtYear(yr, true)
     const care = careAtYear(yr, 'overseas')
-    // Care is all-inclusive (replaces housing) — swap rent for care during care years
     const housingOrCare = care > 0 ? care : overseasHousingNominal
-    const targetAnnual = (overseasSpendingCap || 0) * overseasTaxGrossUp * inflFactorYr * 12 + housingOrCare
+    const targetAnnual = (overseasSpendingCap || 0) * overseasTaxGrossUp * spendInflYr * 12 + housingOrCare
     const grossFromPool = Math.max(0, targetAnnual - Math.max(0, netRentalYr * 12))
     const netFromPool = Math.max(0, grossFromPool - ssOffsetAtYear(yr))
     simPoolOverseas.push(simPoolOverseas[n - 1] * (1 + gr) - netFromPool)
@@ -780,13 +1251,12 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
   const simPoolRentOverseas = [rentCombinedPoolAtRetire]
   for (let n = 1; n <= maxOffset; n++) {
     const yr = rY + n
-    const inflFactorYr = Math.pow(1 + (inflationRate || 3) / 100, yr)
+    const spendInflYr = Math.pow(1 + (spendInflationRate || 3) / 100, yr)
     const overseasRentFactor = Math.pow(1 + (overseasRentIncrease || 0) / 100, yr)
     const overseasHousingNominal = (overseasCost || 0) * overseasRentFactor * 12
     const care = careAtYear(yr, 'overseas')
-    // Care is all-inclusive — replaces housing during care years
     const housingOrCare = care > 0 ? care : overseasHousingNominal
-    const targetAnnual = (overseasSpendingCap || 0) * overseasTaxGrossUp * inflFactorYr * 12 + housingOrCare
+    const targetAnnual = (overseasSpendingCap || 0) * overseasTaxGrossUp * spendInflYr * 12 + housingOrCare
     simPoolRentOverseas.push(simPoolRentOverseas[n - 1] * (1 + gr) - Math.max(0, targetAnnual - ssOffsetAtYear(yr)))
   }
 
@@ -794,10 +1264,10 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
   const simPoolRentUS = [rentCombinedPoolAtRetire]
   for (let n = 1; n <= maxOffset; n++) {
     const yr = rY + n
-    const inflFactorYr = Math.pow(1 + (inflationRate || 3) / 100, yr)
+    const spendInflYr = Math.pow(1 + (spendInflationRate || 3) / 100, yr)
     const uf = Math.pow(1 + (utilIncreaseRate || 0) / 100, yr)
     const rentUSHousingYr = (calcRentAtYear(yr) + utilsTotal2 * uf + (rentParking || 0) * uf) * 12
-    const targetAnnual = (spendingCap || 0) * relocateTaxGrossUp * inflFactorYr * 12 + rentUSHousingYr
+    const targetAnnual = combinedSpendCap * relocateTaxGrossUp * spendInflYr * 12 + rentUSHousingYr
     simPoolRentUS.push(simPoolRentUS[n - 1] * (1 + gr) - Math.max(0, targetAnnual + careAtYear(yr, 'relocate') - ssOffsetAtYear(yr)))
   }
 
@@ -819,12 +1289,12 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
   const simPoolOverseasSell = [overseasSellStartPool]
   for (let n = 1; n <= maxOffset; n++) {
     const yr = rY + n
-    const inflFactorYr = Math.pow(1 + (inflationRate || 3) / 100, yr)
+    const spendInflYr = Math.pow(1 + (spendInflationRate || 3) / 100, yr)
     const overseasRentFactor = Math.pow(1 + (overseasRentIncrease || 0) / 100, yr)
     const overseasHousingNominal = (overseasCost || 0) * overseasRentFactor * 12
     const care = careAtYear(yr, 'overseas')
     const housingOrCare = care > 0 ? care : overseasHousingNominal
-    const targetAnnual = (overseasSpendingCap || 0) * overseasTaxGrossUp * inflFactorYr * 12 + housingOrCare
+    const targetAnnual = (overseasSpendingCap || 0) * overseasTaxGrossUp * spendInflYr * 12 + housingOrCare
     const netFromPool = Math.max(0, targetAnnual - ssOffsetAtYear(yr))
     simPoolOverseasSell.push(simPoolOverseasSell[n - 1] * (1 + gr) - netFromPool)
   }
@@ -832,8 +1302,9 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
   for (let n = 1; n <= maxOffset; n++) {
     const yr = rY + n
     const inflFactorYr = Math.pow(1 + (inflationRate || 3) / 100, yr)
+    const spendInflYr = Math.pow(1 + (spendInflationRate || 3) / 100, yr)
     const relocateHousingYr = (relocateMonthlyCost || 0) * inflFactorYr * 12
-    const targetAnnual = (spendingCap || 0) * relocateTaxGrossUp * inflFactorYr * 12 + relocateHousingYr
+    const targetAnnual = combinedSpendCap * relocateTaxGrossUp * spendInflYr * 12 + relocateHousingYr
     simPoolSellRelocate.push(simPoolSellRelocate[n - 1] * (1 + gr) - Math.max(0, targetAnnual + careAtYear(yr, 'relocate') - ssOffsetAtYear(yr)))
   }
 
@@ -853,13 +1324,14 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
   for (let n = 1; n <= maxOffset; n++) {
     const yr = rY + n
     const inflFactorYr = Math.pow(1 + (inflationRate || 3) / 100, yr)
+    const spendInflYr = Math.pow(1 + (spendInflationRate || 3) / 100, yr)
     const yearsInNewHome = n
     const paidOffNewHome = yearsInNewHome >= 30
     const newHomeMortgageYr = paidOffNewHome ? 0 : newHomePI
     const newHomeTaxYr = newHomeTaxBase * Math.pow(1 + (taxIncreasePct || 0) / 100, yearsInNewHome)
     const newHomeMainYr = newHomeMainBase * Math.pow(1 + (inflationRate || 3) / 100, yearsInNewHome)
     const housingYr = (newHomeMortgageYr + newHomeTaxYr + newHomeMainYr) * 12
-    const targetAnnual = (spendingCap || 0) * relocateTaxGrossUp * inflFactorYr * 12 + housingYr
+    const targetAnnual = combinedSpendCap * relocateTaxGrossUp * spendInflYr * 12 + housingYr
     simPoolSellBuy.push(simPoolSellBuy[n - 1] * (1 + gr) - Math.max(0, targetAnnual + careAtYear(yr, 'relocate') - ssOffsetAtYear(yr)))
   }
 
@@ -869,11 +1341,12 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
   for (let n = 1; n <= maxOffset; n++) {
     const yr = rY + n
     const inflFactorYr = Math.pow(1 + (inflationRate || 3) / 100, yr)
+    const spendInflYr = Math.pow(1 + (spendInflationRate || 3) / 100, yr)
     const yearsInNewHome = n
     const newHomeTaxYr = newHomeTaxBase * Math.pow(1 + (taxIncreasePct || 0) / 100, yearsInNewHome)
     const newHomeMainYr = newHomeMainBase * Math.pow(1 + (inflationRate || 3) / 100, yearsInNewHome)
     const housingYr = (newHomeTaxYr + newHomeMainYr) * 12  // no mortgage
-    const targetAnnual = (spendingCap || 0) * relocateTaxGrossUp * inflFactorYr * 12 + housingYr
+    const targetAnnual = combinedSpendCap * relocateTaxGrossUp * spendInflYr * 12 + housingYr
     simPoolSellBuyCash.push(simPoolSellBuyCash[n - 1] * (1 + gr) - Math.max(0, targetAnnual + careAtYear(yr, 'relocate') - ssOffsetAtYear(yr)))
   }
 
@@ -913,11 +1386,11 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
   const simPoolRentvest = [rentvestPoolAtRetire]
   for (let n = 1; n <= maxOffset; n++) {
     const yr = rY + n
-    const inflFactorYr = Math.pow(1 + (inflationRate || 3) / 100, yr)
+    const spendInflYr = Math.pow(1 + (spendInflationRate || 3) / 100, yr)
     const yearsOwned = yr
     const rvTax = rentvestTaxBase * Math.pow(1 + (taxIncreasePct || 0) / 100, yearsOwned)
     const rvMaint = rentvestMainBase * Math.pow(1 + (inflationRate || 3) / 100, yearsOwned)
-    const targetAnnual = (spendingCap || 0) * rentvestTaxGrossUp * inflFactorYr * 12 + (rvTax + rvMaint) * 12
+    const targetAnnual = combinedSpendCap * rentvestTaxGrossUp * spendInflYr * 12 + (rvTax + rvMaint) * 12
     simPoolRentvest.push(simPoolRentvest[n - 1] * (1 + gr) - Math.max(0, targetAnnual + careAtYear(yr, 'relocate') - ssOffsetAtYear(yr)))
   }
 
@@ -952,8 +1425,8 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
     const netRental = calcNetRentalAtYear(y)
     const poolRemaining = simPoolByOffset[offset] ?? 0
     const inflFactorY = Math.pow(1 + (inflationRate || 3) / 100, y)
-    // afterHousing = spending cap inflated — this is what's left after housing is covered
-    const afterHousing = (spendingCap || 0) * inflFactorY
+    const spendInflFactorY = Math.pow(1 + (spendInflationRate || 3) / 100, y)
+    const afterHousing = combinedSpendCap * spendInflFactorY
     const ssIncome = ssOffsetAtYear(y) / 12  // monthly SS income at this year
     const careUS = careAtYear(y, 'stay') / 12        // monthly stay-in-home care cost
     const careRelocate = careAtYear(y, 'relocate') / 12  // monthly US relocate care cost
@@ -966,7 +1439,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
     const overseasHousingNominal = careOverseas > 0 ? careOverseas : overseasRentNominal
     const rentalBreakdown = calcRentalBreakdownAtYear(y, true)
     const overseasNetRental = rentalBreakdown.net
-    const overseasAfterHousing = (overseasSpendingCap || 0) * inflFactorY
+    const overseasAfterHousing = (overseasSpendingCap || 0) * spendInflFactorY
     const overseasAfterToday = overseasAfterHousing / inflFactorY
     const overseasUSEquiv = overseasAfterToday / ((colRatio || 40) / 100)
     const overseasPoolRemaining = simPoolOverseas[offset] ?? 0
@@ -978,20 +1451,20 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
 
     // Sell house + move overseas scenario
     const overseasSellHousingMonthly = careOverseas > 0 ? careOverseas : (overseasCost || 0) * Math.pow(1 + (overseasRentIncrease || 0) / 100, y)
-    const overseasSellAfterHousing = (overseasSpendingCap || 0) * inflFactorY
+    const overseasSellAfterHousing = (overseasSpendingCap || 0) * spendInflFactorY
     const overseasSellPoolRemaining = simPoolOverseasSell[offset] ?? 0
     const overseasSellPoolReal = overseasSellPoolRemaining / inflFactorY
 
     // Keep renting in US scenario
     const uf = Math.pow(1 + (utilIncreaseRate || 0) / 100, y)
     const rentUSHousingMonthly = calcRentAtYear(y) + utilsTotal2 * uf + (rentParking || 0) * uf
-    const rentUSAfterHousing = (spendingCap || 0) * inflFactorY
+    const rentUSAfterHousing = combinedSpendCap * spendInflFactorY
     const rentUSPoolRemaining = simPoolRentUS[offset] ?? 0
     const rentUSPoolReal = rentUSPoolRemaining / inflFactorY
 
     // Sell & Relocate scenario
     const sellRelocateHousingMonthly = (relocateMonthlyCost || 0) * inflFactorY
-    const sellRelocateAfterHousing = (spendingCap || 0) * inflFactorY
+    const sellRelocateAfterHousing = combinedSpendCap * spendInflFactorY
     const sellRelocatePoolRemaining = simPoolSellRelocate[offset] ?? 0
     const sellRelocatePoolReal = sellRelocatePoolRemaining / inflFactorY
 
@@ -1002,7 +1475,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
     const sellBuyTaxMonthly = newHomeTaxBase * Math.pow(1 + (taxIncreasePct || 0) / 100, yearsInNewHome)
     const sellBuyMainMonthly = newHomeMainBase * Math.pow(1 + (inflationRate || 3) / 100, yearsInNewHome)
     const sellBuyHousingMonthly = sellBuyMortgageMonthly + sellBuyTaxMonthly + sellBuyMainMonthly
-    const sellBuyAfterHousing = (spendingCap || 0) * inflFactorY
+    const sellBuyAfterHousing = combinedSpendCap * spendInflFactorY
     const sellBuyPoolRemaining = simPoolSellBuy[offset] ?? 0
     const sellBuyPoolReal = sellBuyPoolRemaining / inflFactorY
 
@@ -1010,7 +1483,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
     const sellBuyCashTaxMonthly = newHomeTaxBase * Math.pow(1 + (taxIncreasePct || 0) / 100, yearsInNewHome)
     const sellBuyCashMainMonthly = newHomeMainBase * Math.pow(1 + (inflationRate || 3) / 100, yearsInNewHome)
     const sellBuyCashHousingMonthly = sellBuyCashTaxMonthly + sellBuyCashMainMonthly
-    const sellBuyCashAfterHousing = (spendingCap || 0) * inflFactorY
+    const sellBuyCashAfterHousing = combinedSpendCap * spendInflFactorY
     const sellBuyCashPoolRemaining = simPoolSellBuyCash[offset] ?? 0
     const sellBuyCashPoolReal = sellBuyCashPoolRemaining / inflFactorY
 
@@ -1027,7 +1500,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
       // Rentvest scenario
       rentvestHousingMonthly: rentvestTaxBase * Math.pow(1 + (taxIncreasePct || 0) / 100, y)
                             + rentvestMainBase * Math.pow(1 + (inflationRate || 3) / 100, y),
-      rentvestAfterHousing: (spendingCap || 0) * inflFactorY,
+      rentvestAfterHousing: combinedSpendCap * spendInflFactorY,
       rentvestPoolRemaining: simPoolRentvest[offset] ?? 0,
       rentvestPoolReal: (simPoolRentvest[offset] ?? 0) / inflFactorY }
   })
@@ -1052,6 +1525,8 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
       water: (effectiveUtilities.water || 0) * utilFactor,
       trash: (effectiveUtilities.trash || 0) * utilFactor,
       electricity: (effectiveUtilities.electricity || 0) * utilFactor,
+      waterInHoa: effectiveUtilities.waterInHoa,
+      trashInHoa: effectiveUtilities.trashInHoa,
     }
     const phBase = {
       ...house,
@@ -1612,7 +2087,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
 
                     {/* Person rows */}
                     {[
-                      { who: 'D', savesAt: dSavesAt, fv: s.dFV, snap: dSnap, colorClass: 'd-color', housing: Math.round((dBudget || 0) - dSavesAt), spillPaidForA: Math.round(((aSnap.spillFromDRoth || 0) + (aSnap.spillFromDBrokerage || 0) + (aSnap.spillCashOffset || 0)) / 12), personSpend: dSpendToday },
+                      { who: 'D', savesAt: dSavesAt, fv: s.dFV, snap: dSnap, colorClass: 'd-color', housing: Math.round((dBudget || 0) - dSavesAt), spillPaidForA: Math.round(((aSnap.spillFromDRoth || 0) + (aSnap.spillFromDBrokerage || 0) + (aSnap.spillFromDLump || 0) + (aSnap.spillFromDRothGains || 0) + (aSnap.spillCashOffset || 0)) / 12), personSpend: dSpendToday },
                       { who: 'A', savesAt: aSavesAt, fv: s.aFV, snap: aSnap, colorClass: 'a-color', housing: Math.round((aBudget || 0) - aSavesAt), spillPaidForA: 0, personSpend: aSpendToday },
                     ].map(({ who, savesAt, fv, snap, colorClass, housing, spillPaidForA, personSpend }) => {
                       const inflFactor = Math.pow(1 + (spendInflationRate || inflationRate || 3) / 100, s.y)
@@ -1629,17 +2104,19 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                               const budget      = who === 'D' ? dBudget : aBudget
                               const leftover    = savesAt
                               const rothMo      = Math.round(snap.rothAlloc || 0)
-                              const brkMo       = Math.round(who === 'D' ? (dYearlyBrokerage[s.y - 1] || 0) : (aYearlyBrokerage[s.y - 1] || 0))
+                              const brkMo       = Math.round(snap.brokerageAlloc || (who === 'D' ? (dYearlyBrokerage[s.y - 1] || 0) : (aYearlyBrokerage[s.y - 1] || 0)))
                               // For housing draws: use spill-specific fields so numbers match spillPaidForA
-                              const spillRoth   = Math.round((aSnap.spillFromDRoth || 0) / 12)
-                              const spillBrk    = Math.round((aSnap.spillFromDBrokerage || 0) / 12)
+                              const spillRoth       = Math.round((aSnap.spillFromDRoth || 0) / 12)
+                              const spillBrk        = Math.round((aSnap.spillFromDBrokerage || 0) / 12)
+                              const spillLump       = Math.round((aSnap.spillFromDLump || 0) / 12)
+                              const spillRothGains  = Math.round((aSnap.spillFromDRothGains || 0) / 12)
                               // Also show D's own housing gap draws (when D's own budget < housing)
                               const ownRoth     = Math.round((snap.drawFromRoth || 0) / 12) - spillRoth
                               const ownBrk      = Math.round((snap.drawFromBrokerage || 0) / 12) - spillBrk
                               const dBrkPrincipal = Math.round((snap.brkPrincipalDraw || 0) / 12)
                               const dBrkGains   = Math.round((snap.brkGainsDraw || 0) / 12)
-                              const ownRothGains = Math.round((snap.drawFromRothGains || 0) / 12)
-                              const ownLump      = Math.round((snap.drawFromLump || 0) / 12)
+                              const ownRothGains = Math.round((snap.drawFromRothGains || 0) / 12) - spillRothGains
+                              const ownLump      = Math.round((snap.drawFromLump || 0) / 12) - spillLump
                               const netInvest   = leftover - spillPaidForA
                               return (
                                 <div className="ysp-rows">
@@ -1729,7 +2206,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                                   )}
                                   {who === 'A' && savesAt < 0 && (
                                     <div className="ysp-row" style={{color:'#f87171',fontSize:'0.62rem'}}>
-                                      <span>gap covered by D's Roth</span>
+                                      <span>gap covered by D</span>
                                     </div>
                                   )}
                                 </div>
@@ -1793,25 +2270,41 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                                 <td className={`ysp-td-val ${colorClass}`}>{fmt(fv)}</td>
                               </tr>
                               {/* ── HYSA ── */}
-                              {(snap.hysa || 0) > 0 || (snap.hysaMonthly || 0) > 0 || (snap.hysaSpendDraw || 0) > 0 ? (
+                              {(snap.hysa || 0) > 0 || (snap.hysaMonthly || 0) > 0 || (snap.hysaSpendDraw || 0) > 0 || (snap.spendForA_hysa || 0) > 0 ? (
                                 <tr>
                                   <td className="ysp-td-dot"><span className="ysp-dot ysp-dot--hysa" /></td>
                                   <td className="ysp-td-name">
                                     {(snap.hysa || 0) === 0
                                       ? <span>HYSA <span className="ysp-sub">(depleted)</span>
                                           {(snap.hysaSpendDraw || 0) > 0 && <span className="ysp-sub" style={{color:'#f87171', display:'block'}}>💸 spend −{fmt(Math.round((snap.hysaSpendDraw||0)/12))}/mo · drained</span>}
+                                          {who === 'D' && (snap.spendForA_hysa || 0) > 0 && <span className="ysp-sub" style={{color:'#60a5fa', display:'block', fontWeight:600}}>🤝 A's spend −{fmt(Math.round((snap.spendForA_hysa)/12))}/mo</span>}
                                         </span>
                                       : <span>HYSA
                                           {(snap.hysaMonthly || 0) > 0 && <span className="ysp-alloc-chip ysp-alloc-hysa">+{fmt(Math.round(snap.hysaMonthly))}/mo</span>}
                                           {(snap.hysaSpendDraw || 0) > 0 && <span className="ysp-sub" style={{color:'#f87171', display:'block'}}>💸 spend −{fmt(Math.round((snap.hysaSpendDraw||0)/12))}/mo</span>}
+                                          {who === 'D' && (snap.spendForA_hysa || 0) > 0 && <span className="ysp-sub" style={{color:'#60a5fa', display:'block', fontWeight:600}}>🤝 A's spend −{fmt(Math.round((snap.spendForA_hysa)/12))}/mo</span>}
+                                          {(() => {
+                                            const addMo = Math.round(snap.hysaMonthly || 0)
+                                            const drawMo = Math.round(((snap.hysaSpendDraw || 0) + (snap.spendForA_hysa || 0)) / 12)
+                                            const sources = (addMo > 0 ? 1 : 0) + ((snap.hysaSpendDraw || 0) > 0 ? 1 : 0) + ((snap.spendForA_hysa || 0) > 0 ? 1 : 0)
+                                            if (sources < 2) return null
+                                            const net = addMo - drawMo
+                                            return <span className="ysp-sub" style={{color: net > 0 ? '#10b981' : net < 0 ? '#f87171' : '#9ca3af', display:'block', fontWeight:600}}>→ net {net >= 0 ? '+' : '−'}{fmt(Math.abs(net))}/mo</span>
+                                          })()}
                                         </span>
                                     }
                                   </td>
                                   <td className="ysp-td-val ysp-hysa">
-                                    {(snap.hysa || 0) === 0 && (snap.hysaSpendDraw || 0) > 0
-                                      ? <span><span style={{color:'#6b7280',textDecoration:'line-through',fontSize:'0.7em'}}>{fmt(Math.round(snap.hysaPreDraw || 0))}</span> $0</span>
-                                      : fmt(Math.round(snap.hysa || 0))
-                                    }
+                                    {(() => {
+                                      const bal = Math.round(snap.hysa || 0)
+                                      const drawn = (snap.hysaSpendDraw || 0) + (snap.spendForA_hysa || 0)
+                                      const pre = Math.round(snap.hysaPreDraw || 0)
+                                      if (bal === 0 && drawn > 0 && pre > 0)
+                                        return <span><span style={{color:'#6b7280',textDecoration:'line-through',fontSize:'0.7em'}}>{fmt(pre)}</span> $0</span>
+                                      if (bal > 0 && drawn > 0 && pre > bal)
+                                        return <span><span style={{color:'#6b7280',fontSize:'0.7em'}}>{fmt(pre)} →</span> {fmt(bal)} <span style={{color:'#9ca3af',fontSize:'0.65em'}}>remaining</span></span>
+                                      return fmt(bal)
+                                    })()}
                                   </td>
                                 </tr>
                               ) : null}
@@ -1819,18 +2312,30 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                               <tr>
                                 <td className="ysp-td-dot"><span className="ysp-dot ysp-dot--roth" /></td>
                                 <td className="ysp-td-name">Roth contrib <span className="ysp-sub">(tax-free)</span>
+                                  {(snap.rothAlloc || 0) > 0 && <span className="ysp-alloc-chip ysp-alloc-roth">+{fmt(Math.round(snap.rothAlloc))}/mo</span>}
                                   {(snap.drawFromRoth || 0) > 0 && inDeficit && <span className="ysp-sub" style={{color:'#fb923c', display:'block'}}>🏠 housing −{fmt(Math.round((snap.drawFromRoth||0)/12))}/mo{(snap.roth||0)===0 ? ' · drained' : ''}</span>}
                                   {(snap.drawFromRoth || 0) > 0 && !inDeficit && null /* 🏠 covers A label hidden */}
-                                  {who === 'D' && (snap.spendRothDraw || 0) > 0 && <span className="ysp-sub" style={{color:'#f87171', display:'block'}}>💸 spend −{fmt(Math.round((snap.spendRothDraw||0)/12))}/mo{(snap.roth||0)===0 ? ' · drained' : ''}</span>}
+                                  {(snap.spendRothDraw || 0) > 0 && <span className="ysp-sub" style={{color:'#f87171', display:'block'}}>💸 spend −{fmt(Math.round((snap.spendRothDraw||0)/12))}/mo{(snap.roth||0)===0 ? ' · drained' : ''}</span>}
+                                  {who === 'D' && (snap.spendForA_roth || 0) > 0 && <span className="ysp-sub" style={{color:'#60a5fa', display:'block', fontWeight:600}}>🤝 A's spend −{fmt(Math.round((snap.spendForA_roth)/12))}/mo</span>}
+                                  {(() => {
+                                    const addMo = Math.round(snap.rothAlloc || 0)
+                                    const drawMo = Math.round(((snap.spendRothDraw || 0) + (snap.spendForA_roth || 0) + (inDeficit ? (snap.drawFromRoth || 0) : 0)) / 12)
+                                    const sources = (addMo > 0 ? 1 : 0) + ((snap.spendRothDraw || 0) > 0 ? 1 : 0) + ((snap.spendForA_roth || 0) > 0 ? 1 : 0) + (inDeficit && (snap.drawFromRoth || 0) > 0 ? 1 : 0)
+                                    if (sources < 2) return null
+                                    const net = addMo - drawMo
+                                    return <span className="ysp-sub" style={{color: net > 0 ? '#10b981' : net < 0 ? '#f87171' : '#9ca3af', display:'block', fontWeight:600}}>→ net {net >= 0 ? '+' : '−'}{fmt(Math.abs(net))}/mo</span>
+                                  })()}
                                 </td>
                                 <td className="ysp-td-val ysp-roth">
                                   {(() => {
                                     const bal = Math.round(snap.roth || 0)
-                                    const drawn = (snap.drawFromRoth || 0) + (snap.spendRothDraw || 0)
+                                    const drawn = (snap.drawFromRoth || 0) + (snap.spendRothDraw || 0) + (snap.spendForA_roth || 0)
                                     const pre   = Math.round(snap.rothContribPreHousing || 0)
-                                    return bal === 0 && drawn > 0 && pre > 0
-                                      ? <span><span style={{color:'#6b7280',textDecoration:'line-through',fontSize:'0.7em'}}>{fmt(pre)}</span> $0</span>
-                                      : fmt(bal)
+                                    if (bal === 0 && drawn > 0 && pre > 0)
+                                      return <span><span style={{color:'#6b7280',textDecoration:'line-through',fontSize:'0.7em'}}>{fmt(pre)}</span> $0</span>
+                                    if (bal > 0 && drawn > 0 && pre > bal)
+                                      return <span><span style={{color:'#6b7280',fontSize:'0.7em'}}>{fmt(pre)} →</span> {fmt(bal)} <span style={{color:'#9ca3af',fontSize:'0.65em'}}>remaining</span></span>
+                                    return fmt(bal)
                                   })()}
                                 </td>
                               </tr>
@@ -1840,16 +2345,25 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                                   <td className="ysp-td-dot"><span className="ysp-dot ysp-dot--locked" /></td>
                                   <td className="ysp-td-name ysp-locked">Roth gains <span className="ysp-sub">(tax-free after 59½)</span>
                                     {(snap.drawFromRothGains || 0) > 0 && inDeficit && <span className="ysp-sub" style={{color:'#fb923c', display:'block'}}>🏠 housing −{fmt(Math.round((snap.drawFromRothGains||0)/12))}/mo{(snap.rothEarnings||0)===0 ? ' · drained' : ''}</span>}
-                                    {who === 'D' && (snap.spendRothGainsDraw || 0) > 0 && <span className="ysp-sub" style={{color:'#f87171', display:'block'}}>💸 spend −{fmt(Math.round((snap.spendRothGainsDraw||0)/12))}/mo{(snap.rothEarnings||0)===0 ? ' · drained' : ''}</span>}
+                                    {(snap.spendRothGainsDraw || 0) > 0 && <span className="ysp-sub" style={{color:'#f87171', display:'block'}}>💸 spend −{fmt(Math.round((snap.spendRothGainsDraw||0)/12))}/mo{(snap.rothEarnings||0)===0 ? ' · drained' : ''}</span>}
+                                    {who === 'D' && (snap.spendForA_rothGains || 0) > 0 && <span className="ysp-sub" style={{color:'#60a5fa', display:'block', fontWeight:600}}>🤝 A's spend −{fmt(Math.round((snap.spendForA_rothGains)/12))}/mo</span>}
+                                    {(() => {
+                                      const totalDraw = Math.round(((inDeficit ? (snap.drawFromRothGains || 0) : 0) + (snap.spendRothGainsDraw || 0) + (snap.spendForA_rothGains || 0)) / 12)
+                                      const sources = (inDeficit && (snap.drawFromRothGains || 0) > 0 ? 1 : 0) + ((snap.spendRothGainsDraw || 0) > 0 ? 1 : 0) + ((snap.spendForA_rothGains || 0) > 0 ? 1 : 0)
+                                      if (sources < 2) return null
+                                      return <span className="ysp-sub" style={{color:'#f87171', display:'block', fontWeight:600}}>→ total −{fmt(totalDraw)}/mo</span>
+                                    })()}
                                   </td>
                                   <td className="ysp-td-val ysp-locked">
                                     {(() => {
                                       const bal = Math.round(snap.rothEarnings || 0)
-                                      const drawn = (snap.drawFromRothGains || 0) + (snap.spendRothGainsDraw || 0)
+                                      const drawn = (snap.drawFromRothGains || 0) + (snap.spendRothGainsDraw || 0) + (snap.spendForA_rothGains || 0)
                                       const pre   = Math.round(snap.rothGainsPreHousing || 0)
-                                      return bal === 0 && drawn > 0 && pre > 0
-                                        ? <span><span style={{color:'#6b7280',textDecoration:'line-through',fontSize:'0.7em'}}>{fmt(pre)}</span> $0</span>
-                                        : fmt(bal)
+                                      if (bal === 0 && drawn > 0 && pre > 0)
+                                        return <span><span style={{color:'#6b7280',textDecoration:'line-through',fontSize:'0.7em'}}>{fmt(pre)}</span> $0</span>
+                                      if (bal > 0 && drawn > 0 && pre > bal)
+                                        return <span><span style={{color:'#6b7280',fontSize:'0.7em'}}>{fmt(pre)} →</span> {fmt(bal)} <span style={{color:'#9ca3af',fontSize:'0.65em'}}>remaining</span></span>
+                                      return fmt(bal)
                                     })()}
                                   </td>
                                 </tr>
@@ -1869,14 +2383,29 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                                   <tr>
                                     <td className="ysp-td-dot"><span className="ysp-dot ysp-dot--brk" /></td>
                                     <td className="ysp-td-name">Brk principal <span className="ysp-sub">(tax-free)</span>
+                                      {(snap.brokerageAlloc || 0) > 0 && <span className="ysp-alloc-chip ysp-alloc-brk">+{fmt(Math.round(snap.brokerageAlloc))}/mo</span>}
                                       {hsgPrincipal > 0 && inDeficit && <span className="ysp-sub" style={{color:'#fb923c', display:'block'}}>🏠 housing −{fmt(Math.round(hsgPrincipal/12))}/mo{rothDrainedIntoHousing ? <span style={{color:'#ef4444'}}> (Roth exhausted)</span> : ''}{basis===0 ? ' · drained' : ''}</span>}
                                       {hsgPrincipal > 0 && !inDeficit && null /* 🏠 covers A label hidden */}
-                                      {who === 'D' && (snap.spendBrkPrincipal || 0) > 0 && <span className="ysp-sub" style={{color:'#f87171', display:'block'}}>💸 spend −{fmt(Math.round((snap.spendBrkPrincipal||0)/12))}/mo{basis===0 ? ' · drained' : ''}</span>}
+                                      {(snap.spendBrkPrincipal || 0) > 0 && <span className="ysp-sub" style={{color:'#f87171', display:'block'}}>💸 spend −{fmt(Math.round((snap.spendBrkPrincipal||0)/12))}/mo{basis===0 ? ' · drained' : ''}</span>}
+                                      {who === 'D' && (snap.spendForA_brkPrincipal || 0) > 0 && <span className="ysp-sub" style={{color:'#60a5fa', display:'block', fontWeight:600}}>🤝 A's spend −{fmt(Math.round((snap.spendForA_brkPrincipal)/12))}/mo</span>}
+                                      {(() => {
+                                        const addMo = Math.round(snap.brokerageAlloc || 0)
+                                        const drawMo = Math.round(((snap.spendBrkPrincipal || 0) + (snap.spendForA_brkPrincipal || 0) + (inDeficit ? hsgPrincipal : 0)) / 12)
+                                        const sources = (addMo > 0 ? 1 : 0) + ((snap.spendBrkPrincipal || 0) > 0 ? 1 : 0) + ((snap.spendForA_brkPrincipal || 0) > 0 ? 1 : 0) + (inDeficit && hsgPrincipal > 0 ? 1 : 0)
+                                        if (sources < 2) return null
+                                        const net = addMo - drawMo
+                                        return <span className="ysp-sub" style={{color: net > 0 ? '#10b981' : net < 0 ? '#f87171' : '#9ca3af', display:'block', fontWeight:600}}>→ net {net >= 0 ? '+' : '−'}{fmt(Math.abs(net))}/mo</span>
+                                      })()}
                                     </td>
                                     <td className="ysp-td-val ysp-brk">
-                                      {basis === 0 && basisPreHousing > 0
-                                        ? <span><span style={{color:'#6b7280',textDecoration:'line-through',fontSize:'0.7em'}}>{fmt(basisPreHousing)}</span> $0</span>
-                                        : fmt(basis)}
+                                      {(() => {
+                                        const totalDrawn = hsgPrincipal + (snap.spendBrkPrincipal || 0) + (snap.spendForA_brkPrincipal || 0)
+                                        if (basis === 0 && totalDrawn > 0 && basisPreHousing > 0)
+                                          return <span><span style={{color:'#6b7280',textDecoration:'line-through',fontSize:'0.7em'}}>{fmt(basisPreHousing)}</span> $0</span>
+                                        if (basis > 0 && totalDrawn > 0 && basisPreHousing > basis)
+                                          return <span><span style={{color:'#6b7280',fontSize:'0.7em'}}>{fmt(basisPreHousing)} →</span> {fmt(basis)} <span style={{color:'#9ca3af',fontSize:'0.65em'}}>remaining</span></span>
+                                        return fmt(basis)
+                                      })()}
                                     </td>
                                   </tr>
                                   <tr className="ysp-tr-sub">
@@ -1884,18 +2413,31 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                                     <td className="ysp-td-name ysp-sub-indent">Brk gains <span className="ysp-sub">(cap gains tax on withdrawal)</span>
                                       {hsgGains > 0 && inDeficit && <span className="ysp-sub" style={{color:'#fb923c', display:'block'}}>🏠 housing −{fmt(Math.round(hsgGains/12))}/mo + {fmt(Math.round((snap.drawTax||0)/12))} tax{gains===0 ? ' · drained' : ''}</span>}
                                       {hsgGains > 0 && !inDeficit && null /* 🏠 covers A label hidden */}
-                                      {who === 'D' && (snap.spendBrkGains || 0) > 0 && <span className="ysp-sub" style={{color:'#f87171', display:'block'}}>💸 spend −{fmt(Math.round((snap.spendBrkGains||0)/12))}/mo + {fmt(Math.round((snap.spendBrkTax||0)/12))} tax{gains===0 ? ' · drained' : ''}</span>}
+                                      {(snap.spendBrkGains || 0) > 0 && <span className="ysp-sub" style={{color:'#f87171', display:'block'}}>💸 spend −{fmt(Math.round((snap.spendBrkGains||0)/12))}/mo + {fmt(Math.round((snap.spendBrkTax||0)/12))} tax{gains===0 ? ' · drained' : ''}</span>}
+                                      {who === 'D' && (snap.spendForA_brkGains || 0) > 0 && <span className="ysp-sub" style={{color:'#60a5fa', display:'block', fontWeight:600}}>🤝 A's spend −{fmt(Math.round((snap.spendForA_brkGains)/12))}/mo + {fmt(Math.round((snap.spendForA_brkTax || 0)/12))} tax</span>}
+                                      {(() => {
+                                        const totalDraw = Math.round(((inDeficit ? hsgGains : 0) + (snap.spendBrkGains || 0) + (snap.spendForA_brkGains || 0)) / 12)
+                                        const totalTax  = Math.round(((inDeficit ? (snap.drawTax || 0) : 0) + (snap.spendBrkTax || 0) + (snap.spendForA_brkTax || 0)) / 12)
+                                        const sources = (inDeficit && hsgGains > 0 ? 1 : 0) + ((snap.spendBrkGains || 0) > 0 ? 1 : 0) + ((snap.spendForA_brkGains || 0) > 0 ? 1 : 0)
+                                        if (sources < 2) return null
+                                        return <span className="ysp-sub" style={{color:'#f87171', display:'block', fontWeight:600}}>→ total −{fmt(totalDraw)}/mo + {fmt(totalTax)} tax</span>
+                                      })()}
                                     </td>
                                     <td className="ysp-td-val ysp-sub-val ysp-locked">
-                                      {gains === 0 && gainsPreHousing > 0
-                                        ? <span><span style={{color:'#6b7280',textDecoration:'line-through',fontSize:'0.7em'}}>{fmt(gainsPreHousing)}</span> $0</span>
-                                        : fmt(gains)}
+                                      {(() => {
+                                        const totalDrawn = hsgGains + (snap.spendBrkGains || 0) + (snap.spendForA_brkGains || 0)
+                                        if (gains === 0 && totalDrawn > 0 && gainsPreHousing > 0)
+                                          return <span><span style={{color:'#6b7280',textDecoration:'line-through',fontSize:'0.7em'}}>{fmt(gainsPreHousing)}</span> $0</span>
+                                        if (gains > 0 && totalDrawn > 0 && gainsPreHousing > gains)
+                                          return <span><span style={{color:'#6b7280',fontSize:'0.7em'}}>{fmt(gainsPreHousing)} →</span> {fmt(gains)} <span style={{color:'#9ca3af',fontSize:'0.65em'}}>remaining</span></span>
+                                        return fmt(gains)
+                                      })()}
                                     </td>
                                   </tr>
                                 </>)
                               })()}
                               {/* ── Uninvested cash ── */}
-                              {who === 'D' && dLumpInit > 0 && (() => {
+                              {((who === 'D' && dLumpInit > 0) || (who === 'A' && aLumpInit > 0)) && (() => {
                                 const lumpBal = Math.round(snap.lump || 0)
                                 const lumpDrawTotal = (snap.spendLumpPrincipal || 0) + (snap.spendLumpGains || 0)
                                 return (
@@ -1907,25 +2449,39 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                                         {(snap.spendLumpPrincipal || 0) > 0 && <span className="ysp-sub" style={{color:'#f87171', display:'block'}}>💸 spend −{fmt(Math.round((snap.spendLumpPrincipal||0)/12))}/mo principal (tax-free)</span>}
                                         {(snap.spendLumpGains || 0) > 0 && <span className="ysp-sub" style={{color:'#f87171', display:'block'}}>💸 spend −{fmt(Math.round((snap.spendLumpGains||0)/12))}/mo gains + {fmt(Math.round((snap.spendLumpTax||0)/12))} tax</span>}
                                       </>}
-                                      {lumpDrawTotal === 0 && (snap.drawFromLump || 0) === 0 && lumpBal > 0 && (snap.spendDeficit === 0) && ((snap.spendRothDraw || 0) + (snap.spendBrkDraw || 0) + (snap.spendRothGainsDraw || 0) + (snap.hysaSpendDraw || 0)) > 0 && (
+                                      {who === 'D' && ((snap.spendForA_lumpPrincipal || 0) > 0 || (snap.spendForA_lumpGains || 0) > 0) && <>
+                                        {(snap.spendForA_lumpPrincipal || 0) > 0 && <span className="ysp-sub" style={{color:'#60a5fa', display:'block', fontWeight:600}}>🤝 A's spend −{fmt(Math.round((snap.spendForA_lumpPrincipal)/12))}/mo principal</span>}
+                                        {(snap.spendForA_lumpGains || 0) > 0 && <span className="ysp-sub" style={{color:'#60a5fa', display:'block', fontWeight:600}}>🤝 A's spend −{fmt(Math.round((snap.spendForA_lumpGains)/12))}/mo gains + {fmt(Math.round((snap.spendForA_lumpTax || 0)/12))} tax</span>}
+                                      </>}
+                                      {lumpDrawTotal === 0 && (snap.drawFromLump || 0) === 0 && lumpBal > 0 && (snap.spendDeficit === 0) && (snap.spendForA || 0) === 0 && ((snap.spendRothDraw || 0) + (snap.spendBrkDraw || 0) + (snap.spendRothGainsDraw || 0) + (snap.hysaSpendDraw || 0)) > 0 && (
                                         <span className="ysp-sub" style={{color:'#6b7280'}}>not drawn — prior buckets covered spend</span>
                                       )}
                                     </td>
                                     <td className="ysp-td-val" style={{color: lumpBal === 0 ? '#ef4444' : '#9ca3af'}}>
                                       {(() => {
-                                        const drawn = (snap.drawFromLump || 0) + (snap.spendLumpPrincipal || 0) + (snap.spendLumpGains || 0)
+                                        const drawn = (snap.drawFromLump || 0) + (snap.spendLumpPrincipal || 0) + (snap.spendLumpGains || 0) + (snap.spendForA_lumpPrincipal || 0) + (snap.spendForA_lumpGains || 0)
                                         const pre   = Math.round(snap.lumpPreSpend || 0)
                                         const preHousing = pre + (snap.drawFromLump || 0)
-                                        return lumpBal === 0 && drawn > 0 && preHousing > 0
-                                          ? <span><span style={{color:'#6b7280',textDecoration:'line-through',fontSize:'0.7em'}}>{fmt(Math.round(preHousing))}</span> $0</span>
-                                          : fmt(lumpBal)
+                                        if (lumpBal === 0 && drawn > 0 && preHousing > 0)
+                                          return <span><span style={{color:'#6b7280',textDecoration:'line-through',fontSize:'0.7em'}}>{fmt(Math.round(preHousing))}</span> $0</span>
+                                        if (lumpBal > 0 && drawn > 0 && preHousing > lumpBal)
+                                          return <span><span style={{color:'#6b7280',fontSize:'0.7em'}}>{fmt(Math.round(preHousing))} →</span> {fmt(lumpBal)} <span style={{color:'#9ca3af',fontSize:'0.65em'}}>remaining</span></span>
+                                        return fmt(lumpBal)
                                       })()}
                                     </td>
                                   </tr>
                                 )
                               })()}
+                              {/* ── Spend covered by D ── */}
+                              {who === 'A' && (snap.spendCoveredByD || 0) > 0 && (
+                                <tr><td colSpan={3}>
+                                  <div style={{fontSize:'0.65rem', color:'#60a5fa', fontWeight:600, padding:'4px 0', background:'rgba(96,165,250,0.08)', borderRadius:4, padding:'6px 8px', margin:'4px 0'}}>
+                                    🤝 D covers A's spend: {fmt(Math.round((snap.spendCoveredByD)/12))}/mo from D's accounts
+                                  </div>
+                                </td></tr>
+                              )}
                               {/* ── Deficit warning ── */}
-                              {who === 'D' && (snap.spendDeficit || 0) > 0 && (
+                              {(snap.spendDeficit || 0) > 0 && (
                                 <tr><td colSpan={3}>
                                   <div style={{fontSize:'0.65rem', color:'#ef4444', fontWeight:600, padding:'4px 0'}}>
                                     ⚠ All buckets depleted · −{fmt(Math.round((snap.spendDeficit||0)/12))}/mo spend inflation gap uncovered
@@ -2109,7 +2665,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
               <button className="snap-toggle-btn" onClick={onToggleSnapshots}>
                 {snapshotsExpanded ? '▾ Hide' : '▸ Show'} year-by-year
               </button>
-              <div className="rent-vs-grid">
+              <div className="invest-snapshots">
                 {snapshotsExpanded && [3,6,9,12,15,18,21,24,27,30].filter(y => y <= iYrs).map(snapY => {
                   const rentAtSnap = calcRentAtYear(snapY)
                   const uf = Math.pow(1 + (utilIncreaseRate || 0) / 100, snapY)
@@ -2121,50 +2677,268 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                   const parkingAtSnap = Math.round((rentParking || 0) * uf)
                   const utilsAtSnap   = waterAtSnap + sewerAtSnap + trashAtSnap + elecAtSnap
                   const totalAtSnap   = rentAtSnap + utilsAtSnap + parkingAtSnap
-                  const dSavesAtSnap = dRentYearlyInvest[snapY - 1] || 0
-                  const aSavesAtSnap = aRentYearlyInvest[snapY - 1] || 0
-                  const dFVAtSnap = fvVariableAnnuity(dRentYearlyInvest.slice(0, snapY), investRate || 0)
-                                   + dLumpRent * Math.pow(1 + downR, snapY)
-                  const aFVAtSnap = fvVariableAnnuity(aRentYearlyInvest.slice(0, snapY), investRate || 0)
-                                   + aLumpRent * Math.pow(1 + downR, snapY)
+                  const dSnap = dRentBucketSnapshots[snapY - 1] || {}
+                  const aSnap = aRentBucketSnapshots[snapY - 1] || {}
+                  const dSavesAt = dRentYearlyInvest[snapY - 1] || 0
+                  const aSavesAt = aRentYearlyInvest[snapY - 1] || 0
+                  const dTotalPort = (dSnap.rothTotal || 0) + (dSnap.brokerage || 0) + (dSnap.hysa || 0) + (dSnap.lump || 0)
+                  const aTotalPort = (aSnap.rothTotal || 0) + (aSnap.brokerage || 0) + (aSnap.hysa || 0) + (aSnap.lump || 0)
+                  const dSpendToday = spendingCap || 0
+                  const aSpendToday = aSpendingCap || 0
                   return (
-                    <div key={snapY} className="rent-vs-detail">
-                      <div className="rvd-header">
-                        <span className="rvd-year">Yr {snapY}</span>
+                    <div key={snapY} className="yr-snap">
+                      <div className="yr-snap-header">
+                        <span className="yr-snap-yr">Yr {snapY} · Age {(currentAge || 33) + snapY}</span>
+                        <span className="yr-snap-housing">
+                          {fmt(rentAtSnap)} rent
+                          {waterAtSnap > 0 ? ` · ${fmt(waterAtSnap)} water` : ''}
+                          {sewerAtSnap > 0 ? ` · ${fmt(sewerAtSnap)} sewer` : ''}
+                          {trashAtSnap > 0 ? ` · ${fmt(trashAtSnap)} trash` : ''}
+                          {elecAtSnap  > 0 ? ` · ${fmt(elecAtSnap)} electric` : ''}
+                          {parkingAtSnap > 0 ? ` · ${fmt(parkingAtSnap)} park` : ''}
+                          {' '}<strong>= {fmt(totalAtSnap)}/mo</strong>
+                        </span>
                       </div>
-                      <div className="rvd-person-block">
-                        <div className="rvd-person-row">
-                          <span className="d-color rvd-who">D</span>
-                          {dSavesAtSnap > 0
-                            ? <span className="rvd-item">saves <strong>{fmt(dSavesAtSnap)}/mo</strong></span>
-                            : dSavesAtSnap < 0
-                              ? <span className="rvd-item pool-draw-item">draws <strong>{fmt(Math.abs(dSavesAtSnap))}/mo</strong></span>
-                              : <span className="rvd-item">saves <strong>—</strong></span>}
-                          <span className="rvd-item">portfolio <strong className="d-color">{fmt(dFVAtSnap)}</strong></span>
-                        </div>
-                        <div className="rvd-sub">rent −{fmt(Math.round(totalAtSnap - Math.min(aRentBudgetAtYear(snapY), totalAtSnap)))}/mo</div>
-                      </div>
-                      <div className="rvd-person-block">
-                        <div className="rvd-person-row">
-                          <span className="a-color rvd-who">A</span>
-                          {aSavesAtSnap > 0
-                            ? <span className="rvd-item">saves <strong>{fmt(aSavesAtSnap)}/mo</strong></span>
-                            : aSavesAtSnap < 0
-                              ? <span className="rvd-item pool-draw-item">draws <strong>{fmt(Math.abs(aSavesAtSnap))}/mo</strong></span>
-                              : <span className="rvd-item">saves <strong>—</strong></span>}
-                          <span className="rvd-item">portfolio <strong className="a-color">{fmt(aFVAtSnap)}</strong></span>
-                        </div>
-                        <div className="rvd-sub">rent −{fmt(Math.round(Math.min(aRentBudgetAtYear(snapY), totalAtSnap)))}/mo</div>
-                      </div>
-                      <div className="rvd-cost-line">
-                        {fmt(rentAtSnap)} rent
-                        {waterAtSnap > 0 ? ` · ${fmt(waterAtSnap)} water` : ''}
-                        {sewerAtSnap > 0 ? ` · ${fmt(sewerAtSnap)} sewer` : ''}
-                        {trashAtSnap > 0 ? ` · ${fmt(trashAtSnap)} trash` : ''}
-                        {elecAtSnap  > 0 ? ` · ${fmt(elecAtSnap)} electric` : ''}
-                        {parkingAtSnap > 0 ? ` · ${fmt(parkingAtSnap)} park` : ''}
-                        {' = '}<strong>{fmt(totalAtSnap)}/mo</strong>
-                      </div>
+                      {[
+                        { who: 'D', savesAt: dSavesAt, fv: dTotalPort, snap: dSnap, colorClass: 'd-color',
+                          housing: Math.round((dBudget || 0) - dSavesAt),
+                          spillPaidForA: Math.round(((aSnap.spillFromDRoth || 0) + (aSnap.spillFromDBrokerage || 0) + (aSnap.spillFromDLump || 0) + (aSnap.spillFromDRothGains || 0) + (aSnap.spillCashOffset || 0)) / 12),
+                          personSpend: dSpendToday },
+                        { who: 'A', savesAt: aSavesAt, fv: aTotalPort, snap: aSnap, colorClass: 'a-color',
+                          housing: Math.round((aBudget || 0) - aSavesAt),
+                          spillPaidForA: 0, personSpend: aSpendToday },
+                      ].map(({ who, savesAt, fv, snap, colorClass, housing, spillPaidForA, personSpend }) => {
+                        const inflFactor = Math.pow(1 + (spendInflationRate || inflationRate || 3) / 100, snapY)
+                        const spendNominal = Math.round(personSpend * inflFactor)
+                        const spendExtra = spendNominal - personSpend
+                        const spendExtraToday = Math.round(spendExtra / inflFactor)
+                        const inDeficit = (savesAt - spillPaidForA) < 0
+                        return (
+                          <div key={who} className="yr-snap-person">
+                            <div className="ysp-header">
+                              <span className={`ysp-who ${colorClass}`}>{who}</span>
+                              {(() => {
+                                const budget = who === 'D' ? dBudget : aBudget
+                                const leftover = savesAt
+                                const rothMo = Math.round(snap.rothAlloc || 0)
+                                const brkMo  = Math.round(snap.brokerageAlloc || 0)
+                                const spillRoth      = Math.round((aSnap.spillFromDRoth || 0) / 12)
+                                const spillBrk       = Math.round((aSnap.spillFromDBrokerage || 0) / 12)
+                                const spillLump      = Math.round((aSnap.spillFromDLump || 0) / 12)
+                                const spillRothGains = Math.round((aSnap.spillFromDRothGains || 0) / 12)
+                                const ownRoth       = Math.round((snap.drawFromRoth || 0) / 12) - spillRoth
+                                const ownBrk        = Math.round((snap.drawFromBrokerage || 0) / 12) - spillBrk
+                                const dBrkPrincipal = Math.round((snap.brkPrincipalDraw || 0) / 12)
+                                const dBrkGains     = Math.round((snap.brkGainsDraw || 0) / 12)
+                                const ownRothGains  = Math.round((snap.drawFromRothGains || 0) / 12) - spillRothGains
+                                const ownLump       = Math.round((snap.drawFromLump || 0) / 12) - spillLump
+                                const netInvest = leftover - spillPaidForA
+                                return (
+                                  <div className="ysp-rows">
+                                    <div className="ysp-row">
+                                      <span className="ysp-row-lbl">Budget</span>
+                                      <span className="ysp-row-val">{fmt(budget)}</span>
+                                    </div>
+                                    <div className="ysp-row">
+                                      <span className="ysp-row-lbl">Housing</span>
+                                      <span className="ysp-row-val ysp-row-neg">−{fmt(housing)}</span>
+                                    </div>
+                                    <div className="ysp-row ysp-row-total">
+                                      <span className="ysp-row-lbl">Leftover</span>
+                                      <span className={`ysp-row-val ${leftover >= 0 ? 'ysp-row-pos' : 'ysp-row-neg'}`}>
+                                        {leftover >= 0 ? '+' : '−'}{fmt(Math.abs(leftover))}/mo
+                                      </span>
+                                    </div>
+                                    {spillPaidForA > 0 && (
+                                      <div className="ysp-row">
+                                        <span className="ysp-row-lbl">Covers A</span>
+                                        <span className="ysp-row-val ysp-row-blue">−{fmt(spillPaidForA)}</span>
+                                      </div>
+                                    )}
+                                    {spillPaidForA > 0 && (
+                                      <div className="ysp-row ysp-row-total">
+                                        <span className="ysp-row-lbl">{netInvest >= 0 ? 'Invests' : 'Deficit'}</span>
+                                        <span className={`ysp-row-val ${netInvest >= 0 ? 'ysp-row-pos' : 'ysp-row-neg'}`}>
+                                          {netInvest >= 0 ? '+' : '−'}{fmt(Math.abs(netInvest))}/mo
+                                        </span>
+                                      </div>
+                                    )}
+                                    {netInvest > 0 && (rothMo > 0 || brkMo > 0) && (
+                                      <div className="ysp-row ysp-row-buckets">
+                                        <span className="ysp-row-lbl"></span>
+                                        <span className="ysp-row-val">
+                                          {rothMo > 0 && <span className="ysp-alloc-chip ysp-alloc-roth">Roth +{fmt(rothMo)}/mo</span>}
+                                          {brkMo  > 0 && <span className="ysp-alloc-chip ysp-alloc-brk">Brk +{fmt(brkMo)}/mo</span>}
+                                        </span>
+                                      </div>
+                                    )}
+                                    {netInvest < 0 && (ownRoth > 0 || ownBrk > 0 || ownRothGains > 0 || ownLump > 0) && (() => {
+                                      const rothDrained = (snap.roth || 0) === 0
+                                      const rothDrainedByBrk = rothDrained && ownBrk > 0
+                                      return (
+                                        <div className="ysp-row ysp-row-buckets">
+                                          <span className="ysp-row-lbl" style={{color:'#fb923c'}}>🏠 from</span>
+                                          <span className="ysp-row-val">
+                                            {ownRoth > 0 && <span className="ysp-alloc-chip" style={{background:'rgba(251,146,60,0.15)',color:'#fb923c'}}>Roth −{fmt(ownRoth)}/mo{rothDrainedByBrk && <span style={{fontWeight:400,color:'#ef4444'}}> · drained</span>}</span>}
+                                            {ownBrk > 0 && <span className="ysp-alloc-chip" style={{background:'rgba(251,146,60,0.15)',color:'#fb923c'}}>Brk −{fmt(ownBrk)}/mo{dBrkPrincipal > 0 && <span style={{fontWeight:400}}> · {fmt(dBrkPrincipal)} principal</span>}</span>}
+                                            {ownRothGains > 0 && <span className="ysp-alloc-chip" style={{background:'rgba(251,146,60,0.15)',color:'#fb923c'}}>Roth gains −{fmt(ownRothGains)}/mo</span>}
+                                            {ownLump > 0 && <span className="ysp-alloc-chip" style={{background:'rgba(251,146,60,0.15)',color:'#fb923c'}}>Cash −{fmt(ownLump)}/mo</span>}
+                                          </span>
+                                        </div>
+                                      )
+                                    })()}
+                                    {who === 'A' && savesAt < 0 && (
+                                      <div className="ysp-row" style={{color:'#f87171',fontSize:'0.62rem'}}>
+                                        <span>gap covered by D</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })()}
+                            </div>
+                            {/* Spending section */}
+                            {(() => {
+                              const income = who === 'D' ? (dIncome || 0) : (aIncome || 0)
+                              const budget = who === 'D' ? dBudget : aBudget
+                              if (!income && !spendNominal) return null
+                              const incomeAfterBudget = Math.max(0, income - budget)
+                              const spendFromSavings  = Math.max(0, spendNominal - incomeAfterBudget)
+                              const spendSurplus      = Math.max(0, incomeAfterBudget - spendNominal)
+                              if (!spendNominal && !income) return null
+                              return (
+                                <div className="ysp-spend-section">
+                                  {income > 0 && <div className="ysp-spend-row"><span className="ysp-spend-lbl">Income</span><span className="ysp-spend-val">{fmt(income)}</span></div>}
+                                  {income > 0 && <div className="ysp-spend-row"><span className="ysp-spend-lbl">Budget</span><span className="ysp-spend-val ysp-spend-neg">−{fmt(budget)}</span></div>}
+                                  {spendNominal > 0 && <div className="ysp-spend-row"><span className="ysp-spend-lbl">Spend</span><span className="ysp-spend-val ysp-spend-neg">−{fmt(spendNominal)}</span></div>}
+                                  <div className="ysp-spend-row ysp-spend-total">
+                                    <span className="ysp-spend-lbl">&nbsp;</span>
+                                    {spendFromSavings > 0
+                                      ? <span className="ysp-spend-drawn">−{fmt(spendFromSavings)}/mo drawn</span>
+                                      : <span className="ysp-spend-surplus">+{fmt(spendSurplus)}/mo surplus</span>}
+                                  </div>
+                                </div>
+                              )
+                            })()}
+                            {personSpend > 0 && (
+                              <div className="ysp-spend-bar">
+                                <span className="ysp-spend-label">💸 {fmt(personSpend)}/mo today = {fmt(spendNominal)} at Yr {snapY} · +{fmt(spendExtra)} more needed</span>
+                                <span className="ysp-spend-short">= −{fmt(spendExtraToday)} in today's $</span>
+                              </div>
+                            )}
+                            {/* Balance table — same structure as buy path */}
+                            <table className="ysp-table">
+                              <tbody>
+                                <tr className="ysp-tr-total">
+                                  <td className="ysp-td-dot"><span className="ysp-dot ysp-dot--total" /></td>
+                                  <td className="ysp-td-name">Total portfolio</td>
+                                  <td className={`ysp-td-val ${colorClass}`}>{fmt(Math.round(fv))}</td>
+                                </tr>
+                                {(snap.hysa || 0) > 0 || (snap.hysaMonthly || 0) > 0 || (snap.hysaSpendDraw || 0) > 0 || (snap.spendForA_hysa || 0) > 0 ? (
+                                  <tr>
+                                    <td className="ysp-td-dot"><span className="ysp-dot ysp-dot--hysa" /></td>
+                                    <td className="ysp-td-name">
+                                      {(snap.hysa || 0) === 0
+                                        ? <span>HYSA <span className="ysp-sub">(depleted)</span>
+                                            {(snap.hysaSpendDraw || 0) > 0 && <span className="ysp-sub" style={{color:'#f87171', display:'block'}}>💸 spend −{fmt(Math.round((snap.hysaSpendDraw||0)/12))}/mo · drained</span>}
+                                          </span>
+                                        : <span>HYSA
+                                            {(snap.hysaMonthly || 0) > 0 && <span className="ysp-alloc-chip ysp-alloc-hysa">+{fmt(Math.round(snap.hysaMonthly))}/mo</span>}
+                                            {(snap.hysaSpendDraw || 0) > 0 && <span className="ysp-sub" style={{color:'#f87171', display:'block'}}>💸 spend −{fmt(Math.round((snap.hysaSpendDraw||0)/12))}/mo</span>}
+                                            {who === 'D' && (snap.spendForA_hysa || 0) > 0 && <span className="ysp-sub" style={{color:'#60a5fa', display:'block', fontWeight:600}}>🤝 A's spend −{fmt(Math.round((snap.spendForA_hysa)/12))}/mo</span>}
+                                            {who === 'A' && (snap.spendForD_hysa || 0) > 0 && <span className="ysp-sub" style={{color:'#a78bfa', display:'block', fontWeight:600}}>🤝 D's spend −{fmt(Math.round((snap.spendForD_hysa)/12))}/mo</span>}
+                                          </span>}
+                                    </td>
+                                    <td className="ysp-td-val ysp-hysa">{fmt(Math.round(snap.hysa || 0))}</td>
+                                  </tr>
+                                ) : null}
+                                <tr>
+                                  <td className="ysp-td-dot"><span className="ysp-dot ysp-dot--roth" /></td>
+                                  <td className="ysp-td-name">Roth contrib <span className="ysp-sub">(tax-free)</span>
+                                    {(snap.rothAlloc || 0) > 0 && <span className="ysp-alloc-chip ysp-alloc-roth">+{fmt(Math.round(snap.rothAlloc))}/mo</span>}
+                                    {(snap.drawFromRoth || 0) > 0 && inDeficit && <span className="ysp-sub" style={{color:'#fb923c', display:'block'}}>🏠 housing −{fmt(Math.round((snap.drawFromRoth||0)/12))}/mo{(snap.roth||0)===0 ? ' · drained' : ''}</span>}
+                                    {(snap.spendRothDraw || 0) > 0 && <span className="ysp-sub" style={{color:'#f87171', display:'block'}}>💸 spend −{fmt(Math.round((snap.spendRothDraw||0)/12))}/mo{(snap.roth||0)===0 ? ' · drained' : ''}</span>}
+                                    {who === 'D' && (snap.spendForA_roth || 0) > 0 && <span className="ysp-sub" style={{color:'#60a5fa', display:'block', fontWeight:600}}>🤝 A's spend −{fmt(Math.round((snap.spendForA_roth)/12))}/mo</span>}
+                                    {who === 'A' && (snap.spendForD_roth || 0) > 0 && <span className="ysp-sub" style={{color:'#a78bfa', display:'block', fontWeight:600}}>🤝 D's spend −{fmt(Math.round((snap.spendForD_roth)/12))}/mo</span>}
+                                  </td>
+                                  <td className="ysp-td-val ysp-roth">{fmt(Math.round(snap.roth || 0))}</td>
+                                </tr>
+                                {((snap.rothEarnings || 0) > 0 || (snap.spendRothGainsDraw || 0) > 0 || (who === 'A' && (snap.spendForD_rothGains || 0) > 0) || (who === 'D' && (snap.spendForA_rothGains || 0) > 0)) && (
+                                  <tr className="ysp-tr-sub">
+                                    <td className="ysp-td-dot"><span className="ysp-dot ysp-dot--locked" /></td>
+                                    <td className="ysp-td-name ysp-locked">Roth gains <span className="ysp-sub">(tax-free after 59½)</span>
+                                      {(snap.spendRothGainsDraw || 0) > 0 && <span className="ysp-sub" style={{color:'#f87171', display:'block'}}>💸 spend −{fmt(Math.round((snap.spendRothGainsDraw||0)/12))}/mo</span>}
+                                      {who === 'D' && (snap.spendForA_rothGains || 0) > 0 && <span className="ysp-sub" style={{color:'#60a5fa', display:'block', fontWeight:600}}>🤝 A's spend −{fmt(Math.round((snap.spendForA_rothGains)/12))}/mo</span>}
+                                      {who === 'A' && (snap.spendForD_rothGains || 0) > 0 && <span className="ysp-sub" style={{color:'#a78bfa', display:'block', fontWeight:600}}>🤝 D's spend −{fmt(Math.round((snap.spendForD_rothGains)/12))}/mo</span>}
+                                    </td>
+                                    <td className="ysp-td-val ysp-locked">{fmt(Math.round(snap.rothEarnings || 0))}</td>
+                                  </tr>
+                                )}
+                                {(() => {
+                                  const basis = Math.round(Math.min(snap.brokerageBasis || 0, snap.brokerage || 0))
+                                  const gains = Math.round(Math.max(0, (snap.brokerage || 0) - basis))
+                                  if (basis === 0 && gains === 0 && (snap.brokerageAlloc || 0) === 0) return null
+                                  return (<>
+                                    <tr>
+                                      <td className="ysp-td-dot"><span className="ysp-dot ysp-dot--brk" /></td>
+                                      <td className="ysp-td-name">Brk principal <span className="ysp-sub">(tax-free)</span>
+                                        {(snap.brokerageAlloc || 0) > 0 && <span className="ysp-alloc-chip ysp-alloc-brk">+{fmt(Math.round(snap.brokerageAlloc))}/mo</span>}
+                                        {(snap.spendBrkPrincipal || 0) > 0 && <span className="ysp-sub" style={{color:'#f87171', display:'block'}}>💸 spend −{fmt(Math.round((snap.spendBrkPrincipal||0)/12))}/mo</span>}
+                                        {who === 'D' && (snap.spendForA_brkPrincipal || 0) > 0 && <span className="ysp-sub" style={{color:'#60a5fa', display:'block', fontWeight:600}}>🤝 A's spend −{fmt(Math.round((snap.spendForA_brkPrincipal)/12))}/mo</span>}
+                                        {who === 'A' && (snap.spendForD_brkPrincipal || 0) > 0 && <span className="ysp-sub" style={{color:'#a78bfa', display:'block', fontWeight:600}}>🤝 D's spend −{fmt(Math.round((snap.spendForD_brkPrincipal)/12))}/mo</span>}
+                                      </td>
+                                      <td className="ysp-td-val ysp-brk">{fmt(basis)}</td>
+                                    </tr>
+                                    {gains > 0 && (
+                                      <tr className="ysp-tr-sub">
+                                        <td className="ysp-td-dot" />
+                                        <td className="ysp-td-name ysp-sub-indent">Brk gains <span className="ysp-sub">(cap gains tax on withdrawal)</span>
+                                          {(snap.spendBrkGains || 0) > 0 && <span className="ysp-sub" style={{color:'#f87171', display:'block'}}>💸 spend −{fmt(Math.round((snap.spendBrkGains||0)/12))}/mo + {fmt(Math.round((snap.spendBrkTax||0)/12))} tax</span>}
+                                          {who === 'D' && (snap.spendForA_brkGains || 0) > 0 && <span className="ysp-sub" style={{color:'#60a5fa', display:'block', fontWeight:600}}>🤝 A's spend −{fmt(Math.round((snap.spendForA_brkGains)/12))}/mo</span>}
+                                          {who === 'A' && (snap.spendForD_brkGains || 0) > 0 && <span className="ysp-sub" style={{color:'#a78bfa', display:'block', fontWeight:600}}>🤝 D's spend −{fmt(Math.round((snap.spendForD_brkGains)/12))}/mo</span>}
+                                        </td>
+                                        <td className="ysp-td-val ysp-sub-val ysp-locked">{fmt(gains)}</td>
+                                      </tr>
+                                    )}
+                                  </>)
+                                })()}
+                                {((who === 'D' && dLumpRent > 0) || (who === 'A' && aLumpRent > 0)) && ((snap.lump || 0) > 0 || (who === 'A' && (snap.spendForD_lumpPrincipal || 0) > 0)) && (
+                                  <tr>
+                                    <td className="ysp-td-dot"><span className="ysp-dot" style={{background:'#6b7280'}} /></td>
+                                    <td className="ysp-td-name">Uninvested cash <span className="ysp-sub">(principal tax-free · gains at cap gains)</span>
+                                      {(snap.spendLumpPrincipal || 0) > 0 && <span className="ysp-sub" style={{color:'#f87171', display:'block'}}>💸 spend −{fmt(Math.round((snap.spendLumpPrincipal||0)/12))}/mo principal</span>}
+                                      {(snap.spendLumpGains || 0) > 0 && <span className="ysp-sub" style={{color:'#f87171', display:'block'}}>💸 spend −{fmt(Math.round((snap.spendLumpGains||0)/12))}/mo gains + {fmt(Math.round((snap.spendLumpTax||0)/12))} tax</span>}
+                                      {who === 'A' && (snap.spendForD_lumpPrincipal || 0) > 0 && <span className="ysp-sub" style={{color:'#a78bfa', display:'block', fontWeight:600}}>🤝 D's spend −{fmt(Math.round((snap.spendForD_lumpPrincipal)/12))}/mo principal</span>}
+                                      {who === 'A' && (snap.spendForD_lumpGains || 0) > 0 && <span className="ysp-sub" style={{color:'#a78bfa', display:'block', fontWeight:600}}>🤝 D's spend −{fmt(Math.round((snap.spendForD_lumpGains)/12))}/mo gains + {fmt(Math.round((snap.spendForD_lumpTax||0)/12))} tax</span>}
+                                    </td>
+                                    <td className="ysp-td-val" style={{color:'#9ca3af'}}>{fmt(Math.round(snap.lump || 0))}</td>
+                                  </tr>
+                                )}
+                                {who === 'A' && (snap.spendCoveredByD || 0) > 0 && (
+                                  <tr><td colSpan={3}>
+                                    <div style={{fontSize:'0.65rem', color:'#60a5fa', fontWeight:600, padding:'4px 0', background:'rgba(96,165,250,0.08)', borderRadius:4, padding:'6px 8px', margin:'4px 0'}}>
+                                      🤝 D covers A's spend: {fmt(Math.round((snap.spendCoveredByD)/12))}/mo from D's accounts
+                                    </div>
+                                  </td></tr>
+                                )}
+                                {who === 'D' && (snap.spendCoveredByA || 0) > 0 && (
+                                  <tr><td colSpan={3}>
+                                    <div style={{fontSize:'0.65rem', color:'#a78bfa', fontWeight:600, background:'rgba(167,139,250,0.08)', borderRadius:4, padding:'6px 8px', margin:'4px 0'}}>
+                                      🤝 A covers D's spend: {fmt(Math.round((snap.spendCoveredByA)/12))}/mo from A's accounts
+                                    </div>
+                                  </td></tr>
+                                )}
+                                {(snap.spendDeficit || 0) > 0 && (
+                                  <tr><td colSpan={3}>
+                                    <div style={{fontSize:'0.65rem', color:'#ef4444', fontWeight:600, padding:'4px 0'}}>
+                                      ⚠ All buckets depleted · −{fmt(Math.round((snap.spendDeficit||0)/12))}/mo spend inflation gap uncovered
+                                    </div>
+                                  </td></tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        )
+                      })}
                     </div>
                   )
                 })}
@@ -2208,8 +2982,8 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
               </div>
             )}
             <div className="retire-combined-row">
-              <span className="retire-label">Spending target</span>
-              <span className="retire-val">{fmt(spendingCap || 0)}/mo today</span>
+              <span className="retire-label">Spending target (D + A)</span>
+              <span className="retire-val">{fmt(combinedSpendCap)}/mo today</span>
             </div>
             <div className="retire-tax-banner">
               <span className="retire-tax-strategy">
@@ -2795,7 +3569,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
             {/* Keep renting in US — rent path */}
             <div className="retire-option-divider" />
             <div className="retire-snap-header">
-              Option 8 · 🏘 Keep Renting in US · {fmt(spendingCap || 0)}/mo spend today <span className="retire-tax-tag">{Math.round(blendedTaxRate(20) * 100)}% blended tax</span>
+              Option 8 · 🏘 Keep Renting in US · {fmt(combinedSpendCap)}/mo spend today <span className="retire-tax-tag">{Math.round(blendedTaxRate(20) * 100)}% blended tax</span>
             </div>
             <div className="retire-combined-row">
               <span className="retire-label">Rent path pool at Yr {rY}</span>

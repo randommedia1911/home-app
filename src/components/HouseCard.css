@@ -577,14 +577,24 @@
   background: #f9fafb;
   border-bottom: 1px solid #e5e7eb;
 }
-.rent-vs-grid { padding: 4px 8px; }
+.rent-vs-grid { padding: 4px 8px; overflow: hidden; }
 .rent-vs-detail {
-  border-bottom: 1px solid #f3f4f6;
-  padding: 5px 0;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 8px 0;
 }
 .rent-vs-detail:last-of-type { border-bottom: none; }
-.rvd-cost-line { font-size: 0.68rem; color: #9ca3af; margin-top: 3px; }
+.rvd-header { font-size: 0.72rem; font-weight: 700; color: #374151; padding-bottom: 2px; border-bottom: 1px solid #e5e7eb; margin-bottom: 4px; }
+.rvd-person-block { margin-bottom: 6px; }
+.rvd-person-row { display: flex; align-items: baseline; gap: 8px; font-size: 0.68rem; flex-wrap: wrap; }
+.rvd-who { font-weight: 700; font-size: 0.72rem; min-width: 14px; }
+.rvd-item { font-size: 0.65rem; color: #6b7280; }
+.rvd-item strong { color: #374151; font-size: 0.65rem; }
+.rvd-sub { font-size: 0.62rem; color: #9ca3af; padding-left: 22px; }
+.rvd-cost-line { font-size: 0.62rem; color: #9ca3af; margin-top: 3px; padding: 3px 0; border-top: 1px dashed #e5e7eb; }
 .rvd-cost-line strong { color: #6b7280; }
+.rent-vs-detail .ysp-table { font-size: 0.6rem; }
+.rent-vs-detail .ysp-table td { padding: 1px 4px; }
+.rent-vs-detail .ysp-dot { width: 6px; height: 6px; }
 .ss-income-line { font-size: 0.68rem; color: #60a5fa; margin-top: 2px; font-weight: 500; }
 .care-cost-line { font-size: 0.68rem; color: #fb923c; margin-top: 2px; font-weight: 500; }
 .retire-rent-path-note { font-size: 0.68rem; color: #f59e0b; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.25); border-radius: 5px; padding: 4px 8px; margin-bottom: 6px; }

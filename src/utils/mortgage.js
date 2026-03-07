@@ -70,7 +70,9 @@ export function calcSaleProceeds(house, dDown, aDown, closingCostPct, aMonthlyTa
   const loanAmount    = house.price - actualDownPmt
 
   const pi         = calcMonthlyPI(loanAmount, house.interestRate, house.loanTermYears)
-  const utilsTotal = (utilities.water || 0) + (utilities.trash || 0) + (utilities.electricity || 0)
+  const utilsTotal = (utilities.waterInHoa ? 0 : (utilities.water || 0))
+                   + (utilities.trashInHoa ? 0 : (utilities.trash || 0))
+                   + (utilities.electricity || 0)
   const total      = pi + (house.propertyTaxAnnual || 0) / 12 + (house.hoaMonthly || 0) + (house.insuranceMonthly || 0) + utilsTotal
   const aMonthly   = Math.min(aMonthlyTarget, total)
 
@@ -118,7 +120,9 @@ export function calcAMonthlyFromOwnership(house, dDown, aDown, closingCostPct, d
   const tax        = (house.propertyTaxAnnual || 0) / 12
   const hoa        = house.hoaMonthly || 0
   const insurance  = house.insuranceMonthly || 0
-  const utilsTotal = (utilities.water || 0) + (utilities.trash || 0) + (utilities.electricity || 0)
+  const utilsTotal = (utilities.waterInHoa ? 0 : (utilities.water || 0))
+                   + (utilities.trashInHoa ? 0 : (utilities.trash || 0))
+                   + (utilities.electricity || 0)
   const total      = pi + tax + hoa + insurance + utilsTotal
 
   return (1 - desiredDOwnPct / 100) * total
