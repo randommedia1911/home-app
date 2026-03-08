@@ -581,16 +581,16 @@ export default function GlobalControls({ dCashBudget, setDCashBudget, aCashBudge
               >{p}%</button>
             ))}
           </div>
-          <div className="sc-label-sm" style={{ marginTop: 10 }}>Inflation (expense growth)</div>
+          <div className="sc-label-sm" style={{ marginTop: 10 }}>Inflation (general + spend default)</div>
           <div className="year-picker">
             {[2, 2.5, 3].map(p => (
               <button key={p}
                 className={`year-btn ${inflationRate === p ? 'active' : ''}`}
-                onClick={() => setInflationRate(p)}
+                onClick={() => { setInflationRate(p); setSpendInflationRate(p) }}
               >{p}%</button>
             ))}
           </div>
-          <div className="sc-label-sm" style={{ marginTop: 10 }}>💸 Spending inflation rate</div>
+          <div className="sc-label-sm" style={{ marginTop: 10 }}>💸 Spending inflation override <span style={{ color: '#9ca3af', fontWeight: 400 }}>(if different from above)</span></div>
           <div className="year-picker">
             {[2, 2.5, 3, 3.5, 4].map(p => (
               <button key={p}
