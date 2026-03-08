@@ -2614,6 +2614,12 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                       Combined <strong>{fmt(combined)}</strong>
                       <span className="rs-today"> · {fmt(combinedToday)} in today's dollars</span>
                     </div>
+                    {sellProceedsAfterTax > 0 && (
+                      <div className="rs-combined" style={{ fontSize: '0.7rem', color: '#22c55e', marginTop: 2 }}>
+                        + House sale net {fmt(Math.round(sellProceedsAfterTax))} → total {fmt(Math.round(combined + sellProceedsAfterTax))}
+                        <span className="rs-today"> · {fmt(Math.round((combined + sellProceedsAfterTax) / inflFactorRY))} in today's $</span>
+                      </div>
+                    )}
                     {rentOut && (
                       <div className="rs-equity-note">
                         + House still owned (move-out Yr {rentMoveOutYear}) — est. value {fmt(houseValueAtEnd)} · D {fmt(dHouseEquity)} · A {fmt(aHouseEquity)} — not included above
