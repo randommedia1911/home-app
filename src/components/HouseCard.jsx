@@ -1714,7 +1714,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                       onUpdateField({ expectedSalePrice: Number(e.target.value) || 0 })
                     }}
                   />
-                  <span style={{ color: '#9ca3af' }}>→ {fmt(Math.round(sellProceedsAfterTax))} after 6% costs{retireSellRemainingLoan > 0 ? `, ${fmt(Math.round(retireSellRemainingLoan))} remaining loan` : ''}{capitalGainsTax > 0 ? ` & ${fmt(Math.round(capitalGainsTax))} cap gains tax` : ''}</span>
+                  <span style={{ color: '#9ca3af' }}>→ net {fmt(Math.round(sellProceedsAfterTax))}{retireSellRemainingLoan > 0 ? ` (−${fmt(Math.round(sellingCosts))} costs · −${fmt(Math.round(retireSellRemainingLoan))} loan` : ` (−${fmt(Math.round(sellingCosts))} costs`}{capitalGainsTax > 0 ? ` · −${fmt(Math.round(capitalGainsTax))} tax)` : ')'}</span>
                 </span>
               )},
               { label: 'Overseas care · rent house out', info: depletionInfoOverseas, subEl: (
@@ -1746,7 +1746,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                       onUpdateField({ expectedSalePrice: Number(e.target.value) || 0 })
                     }}
                   />
-                  <span style={{ color: '#9ca3af' }}>→ {fmt(Math.round(sellProceedsAfterTax))} after 6% costs{retireSellRemainingLoan > 0 ? `, ${fmt(Math.round(retireSellRemainingLoan))} remaining loan` : ''}{capitalGainsTax > 0 ? ` & ${fmt(Math.round(capitalGainsTax))} cap gains tax` : ''}</span>
+                  <span style={{ color: '#9ca3af' }}>→ net {fmt(Math.round(sellProceedsAfterTax))}{retireSellRemainingLoan > 0 ? ` (−${fmt(Math.round(sellingCosts))} costs · −${fmt(Math.round(retireSellRemainingLoan))} loan` : ` (−${fmt(Math.round(sellingCosts))} costs`}{capitalGainsTax > 0 ? ` · −${fmt(Math.round(capitalGainsTax))} tax)` : ')'}</span>
                 </span>
               )},
             ].map(({ label, info, sub, subEl }) => (
