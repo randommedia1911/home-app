@@ -1276,10 +1276,16 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
   const retireAppreciatedPrice = (house.expectedSalePrice || 0) > 0
     ? (house.expectedSalePrice || 0)
     : (house.price || 0) * Math.pow(1 + (appreciationPct || 0) / 100, rY)
-  const sellProceeds = retireAppreciatedPrice * 0.94  // ~6% selling costs
+  const sellingCosts = retireAppreciatedPrice * 0.06
+  const retireSellRemainingLoan = rY >= effectivePaidOffYear
+    ? 0
+    : hasRefi && rY >= (refiYear || 0)
+      ? calcRemainingBalance(refiLoanAmount, refiRate, resolvedRefiTerm, (rY - (refiYear || 0)) * 12)
+      : calcRemainingBalance(loanAmount, house.interestRate, house.loanTermYears, rY * 12)
+  const sellProceeds = retireAppreciatedPrice - sellingCosts - retireSellRemainingLoan
   // Capital gains tax on sale
   const costBasis = house.price || 0
-  const capitalGain = Math.max(0, retireAppreciatedPrice * 0.94 - costBasis - (primaryResidenceExclusion || 0))
+  const capitalGain = Math.max(0, sellProceeds - costBasis - (primaryResidenceExclusion || 0))
   const capitalGainsTax = capitalGain * (capitalGainsTaxPct || 0) / 100
   const sellProceedsAfterTax = sellProceeds - capitalGainsTax
   const sellRelocateStartPool = combinedPortRetire + sellProceedsAfterTax
@@ -1708,7 +1714,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                       onUpdateField({ expectedSalePrice: Number(e.target.value) || 0 })
                     }}
                   />
-                  <span style={{ color: '#9ca3af' }}>→ {fmt(Math.round(sellProceedsAfterTax))} after 6% costs{capitalGainsTax > 0 ? ` & ${fmt(Math.round(capitalGainsTax))} cap gains tax` : ''}</span>
+                  <span style={{ color: '#9ca3af' }}>→ {fmt(Math.round(sellProceedsAfterTax))} after 6% costs{retireSellRemainingLoan > 0 ? `, ${fmt(Math.round(retireSellRemainingLoan))} remaining loan` : ''}{capitalGainsTax > 0 ? ` & ${fmt(Math.round(capitalGainsTax))} cap gains tax` : ''}</span>
                 </span>
               )},
               { label: 'Overseas care · rent house out', info: depletionInfoOverseas, subEl: (
@@ -1740,7 +1746,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                       onUpdateField({ expectedSalePrice: Number(e.target.value) || 0 })
                     }}
                   />
-                  <span style={{ color: '#9ca3af' }}>→ {fmt(Math.round(sellProceedsAfterTax))} after 6% costs{capitalGainsTax > 0 ? ` & ${fmt(Math.round(capitalGainsTax))} cap gains tax` : ''}</span>
+                  <span style={{ color: '#9ca3af' }}>→ {fmt(Math.round(sellProceedsAfterTax))} after 6% costs{retireSellRemainingLoan > 0 ? `, ${fmt(Math.round(retireSellRemainingLoan))} remaining loan` : ''}{capitalGainsTax > 0 ? ` & ${fmt(Math.round(capitalGainsTax))} cap gains tax` : ''}</span>
                 </span>
               )},
             ].map(({ label, info, sub, subEl }) => (
@@ -3161,7 +3167,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
               <span className="retire-val">{fmt(combinedPortRetire)}</span>
             </div>
             <div className="retire-combined-row">
-              <span className="retire-label">+ Sale proceeds (~94% of {fmt(Math.round(retireAppreciatedPrice))})</span>
+              <span className="retire-label">+ Sale proceeds ({fmt(Math.round(retireAppreciatedPrice))} − 6% costs{retireSellRemainingLoan > 0 ? ` − ${fmt(Math.round(retireSellRemainingLoan))} loan` : ''})</span>
               <span className="retire-val" style={{ color: '#22c55e' }}>+{fmt(Math.round(sellProceedsAfterTax))}</span>
             </div>
             {capitalGainsTax > 0 && (
@@ -3224,7 +3230,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
               <span className="retire-val">{fmt(combinedPortRetire)}</span>
             </div>
             <div className="retire-combined-row">
-              <span className="retire-label">+ Sale proceeds (~94% of {fmt(Math.round(retireAppreciatedPrice))})</span>
+              <span className="retire-label">+ Sale proceeds ({fmt(Math.round(retireAppreciatedPrice))} − 6% costs{retireSellRemainingLoan > 0 ? ` − ${fmt(Math.round(retireSellRemainingLoan))} loan` : ''})</span>
               <span className="retire-val" style={{ color: '#22c55e' }}>+{fmt(Math.round(sellProceedsAfterTax))}</span>
             </div>
             {capitalGainsTax > 0 && (
@@ -3289,7 +3295,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
               <span className="retire-val">{fmt(combinedPortRetire)}</span>
             </div>
             <div className="retire-combined-row">
-              <span className="retire-label">+ Sale proceeds (~94% of {fmt(Math.round(retireAppreciatedPrice))})</span>
+              <span className="retire-label">+ Sale proceeds ({fmt(Math.round(retireAppreciatedPrice))} − 6% costs{retireSellRemainingLoan > 0 ? ` − ${fmt(Math.round(retireSellRemainingLoan))} loan` : ''})</span>
               <span className="retire-val" style={{ color: '#22c55e' }}>+{fmt(Math.round(sellProceedsAfterTax))}</span>
             </div>
             {capitalGainsTax > 0 && (
@@ -3362,7 +3368,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
               <span className="retire-val">{fmt(combinedPortRetire)}</span>
             </div>
             <div className="retire-combined-row">
-              <span className="retire-label">+ Sale proceeds (~94% of {fmt(Math.round(retireAppreciatedPrice))})</span>
+              <span className="retire-label">+ Sale proceeds ({fmt(Math.round(retireAppreciatedPrice))} − 6% costs{retireSellRemainingLoan > 0 ? ` − ${fmt(Math.round(retireSellRemainingLoan))} loan` : ''})</span>
               <span className="retire-val" style={{ color: '#22c55e' }}>+{fmt(Math.round(sellProceedsAfterTax))}</span>
             </div>
             {capitalGainsTax > 0 && (
