@@ -3007,7 +3007,72 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                 </span>
               )}
             </div>
-            <div className="retire-snap-header" style={{ borderTop: 'none', marginTop: 8, paddingTop: 0 }}>Option 1 · 🏠 Stay in US <span className="retire-tax-tag">{Math.round(blendedTaxRate(28) * 100)}% blended withdrawal tax</span></div>
+            {/* Sell & Move Overseas — sell house at retirement, move overseas with overseas costs */}
+            <div className="retire-snap-header" style={{ borderTop: 'none', marginTop: 8, paddingTop: 0 }}>
+              Option 1 · 🌏 Sell &amp; Move Overseas · {fmt(overseasCost || 0)}/mo housing today <span className="retire-tax-tag">{Math.round(blendedTaxRate(20) * 100)}% blended tax</span>
+            </div>
+            <div className="retire-combined-row">
+              <span className="retire-label">Buy path pool at Yr {rY}</span>
+              <span className="retire-val">{fmt(combinedPortRetire)}</span>
+            </div>
+            <div className="retire-combined-row">
+              <span className="retire-label">+ Sale proceeds ({fmt(Math.round(retireAppreciatedPrice))} − 6% costs{retireSellRemainingLoan > 0 ? ` − ${fmt(Math.round(retireSellRemainingLoan))} loan` : ''})</span>
+              <span className="retire-val" style={{ color: '#22c55e' }}>+{fmt(Math.round(sellProceedsAfterTax))}</span>
+            </div>
+            {capitalGainsTax > 0 && (
+              <div className="retire-combined-row">
+                <span className="retire-label" style={{ color: '#f87171' }}>− Cap gains tax ({capitalGainsTaxPct}% on {fmt(Math.round(capitalGain))} gain)</span>
+                <span className="retire-val" style={{ color: '#f87171' }}>-{fmt(Math.round(capitalGainsTax))}</span>
+              </div>
+            )}
+            <div className="retire-combined-row" style={{ borderTop: '1px solid #334155', paddingTop: 4, marginTop: 2 }}>
+              <span className="retire-label">Total starting pool</span>
+              <span className="retire-val">{fmt(Math.round(overseasSellStartPool))}</span>
+            </div>
+            <div className="retire-housing-snaps">
+              <div className="retire-snap-cols-header">
+                <span />
+                <span>Housing</span>
+                <span>Spending · today</span>
+                <span>Pool left</span>
+              </div>
+              {retireHousingSnaps.map(({ y, overseasSellHousingMonthly, overseasSellAfterHousing, overseasSellPoolRemaining, overseasSellPoolReal, ssIncome, careOverseas }) => {
+                const inflFactorY = Math.pow(1 + (inflationRate || 3) / 100, y)
+                const overseasSellHousingToday = overseasSellHousingMonthly / inflFactorY
+                const overseasSellAfterToday = overseasSellAfterHousing / inflFactorY
+                const displayHousing = careOverseas > 0 ? careOverseas : overseasSellHousingMonthly
+                const displayHousingToday = displayHousing / inflFactorY
+                return (
+                  <div key={y} className="retire-overseas-group">
+                    <div className="retire-housing-snap-row">
+                      <span className="retire-snap-yr">Age {(currentAge || 33) + y}</span>
+                      <span className="retire-snap-cell">
+                        <span className="retire-val">-{fmt(Math.round(displayHousing))}/mo</span>
+                        <span className="retire-pool-real">-{fmt(Math.round(displayHousingToday))} today</span>
+                      </span>
+                      <span className="retire-snap-cell">
+                        <span className="retire-val">-{fmt(Math.round(overseasSellAfterHousing))}/mo</span>
+                        <span className="retire-pool-real">-{fmt(Math.round(overseasSellAfterToday))} today</span>
+                      </span>
+                      <span className="retire-snap-cell">
+                        {overseasSellPoolRemaining >= 0 ? (
+                          <>
+                            <span className="retire-val">{fmt(Math.round(overseasSellPoolRemaining))}</span>
+                            <span className="retire-pool-real">{fmt(Math.round(overseasSellPoolReal))} today</span>
+                          </>
+                        ) : <span className="retire-pool-empty">Depleted</span>}
+                      </span>
+                    </div>
+                    {ssIncome > 0 && <div className="ss-income-line">🏛 SS {fmt(Math.round(ssIncome))}/mo offsets pool withdrawals</div>}
+                    {careOverseas > 0 && <div className="care-cost-line">🏥 overseas care (all-inclusive, replaces housing)</div>}
+                  </div>
+                )
+              })}
+            </div>
+            <div className="retire-note">Sell at retirement · move overseas · overseas care pricing · no US housing costs</div>
+
+            <div className="retire-option-divider" />
+            <div className="retire-snap-header">Option 2 · 🏠 Stay in US <span className="retire-tax-tag">{Math.round(blendedTaxRate(28) * 100)}% blended withdrawal tax</span></div>
             <div className="retire-housing-snaps">
               <div className="retire-snap-cols-header">
                 <span />
@@ -3065,7 +3130,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
 
             <div className="retire-option-divider" />
             <div className="retire-snap-header retire-overseas-header">
-              <span>Option 2 · 🌏 Overseas · {fmt(overseasSpendingCap || 0)}/mo spend today <span className="retire-tax-tag">{Math.round(blendedTaxRate(15) * 100)}% blended tax</span></span>
+              <span>Option 3 · 🌏 Overseas · {fmt(overseasSpendingCap || 0)}/mo spend today <span className="retire-tax-tag">{Math.round(blendedTaxRate(15) * 100)}% blended tax</span></span>
               <label className="retire-rent-input-label">
                 🏠 rent out $
                 <input
@@ -3160,7 +3225,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
             {/* Sell & Relocate — buy path sells the house and moves */}
             <div className="retire-option-divider" />
             <div className="retire-snap-header">
-              Option 3 · 🏡 Sell &amp; Relocate US · {fmt(relocateMonthlyCost || 0)}/mo housing today <span className="retire-tax-tag">{Math.round(blendedTaxRate(20) * 100)}% blended tax</span>
+              Option 4 · 🏡 Sell &amp; Relocate US · {fmt(relocateMonthlyCost || 0)}/mo housing today <span className="retire-tax-tag">{Math.round(blendedTaxRate(20) * 100)}% blended tax</span>
             </div>
             <div className="retire-combined-row">
               <span className="retire-label">Buy path pool at Yr {rY}</span>
@@ -3220,75 +3285,10 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
             </div>
             <div className="retire-note">Sell at retirement · add proceeds to pool · housing cost = {fmt(relocateMonthlyCost || 0)}/mo US relocation today</div>
 
-            {/* Sell & Move Overseas — sell house at retirement, move overseas with overseas costs */}
-            <div className="retire-option-divider" />
-            <div className="retire-snap-header">
-              Option 3b · 🌏 Sell &amp; Move Overseas · {fmt(overseasCost || 0)}/mo housing today <span className="retire-tax-tag">{Math.round(blendedTaxRate(20) * 100)}% blended tax</span>
-            </div>
-            <div className="retire-combined-row">
-              <span className="retire-label">Buy path pool at Yr {rY}</span>
-              <span className="retire-val">{fmt(combinedPortRetire)}</span>
-            </div>
-            <div className="retire-combined-row">
-              <span className="retire-label">+ Sale proceeds ({fmt(Math.round(retireAppreciatedPrice))} − 6% costs{retireSellRemainingLoan > 0 ? ` − ${fmt(Math.round(retireSellRemainingLoan))} loan` : ''})</span>
-              <span className="retire-val" style={{ color: '#22c55e' }}>+{fmt(Math.round(sellProceedsAfterTax))}</span>
-            </div>
-            {capitalGainsTax > 0 && (
-              <div className="retire-combined-row">
-                <span className="retire-label" style={{ color: '#f87171' }}>− Cap gains tax ({capitalGainsTaxPct}% on {fmt(Math.round(capitalGain))} gain)</span>
-                <span className="retire-val" style={{ color: '#f87171' }}>-{fmt(Math.round(capitalGainsTax))}</span>
-              </div>
-            )}
-            <div className="retire-combined-row" style={{ borderTop: '1px solid #334155', paddingTop: 4, marginTop: 2 }}>
-              <span className="retire-label">Total starting pool</span>
-              <span className="retire-val">{fmt(Math.round(overseasSellStartPool))}</span>
-            </div>
-            <div className="retire-housing-snaps">
-              <div className="retire-snap-cols-header">
-                <span />
-                <span>Housing</span>
-                <span>Spending · today</span>
-                <span>Pool left</span>
-              </div>
-              {retireHousingSnaps.map(({ y, overseasSellHousingMonthly, overseasSellAfterHousing, overseasSellPoolRemaining, overseasSellPoolReal, ssIncome, careOverseas }) => {
-                const inflFactorY = Math.pow(1 + (inflationRate || 3) / 100, y)
-                const overseasSellHousingToday = overseasSellHousingMonthly / inflFactorY
-                const overseasSellAfterToday = overseasSellAfterHousing / inflFactorY
-                const displayHousing = careOverseas > 0 ? careOverseas : overseasSellHousingMonthly
-                const displayHousingToday = displayHousing / inflFactorY
-                return (
-                  <div key={y} className="retire-overseas-group">
-                    <div className="retire-housing-snap-row">
-                      <span className="retire-snap-yr">Age {(currentAge || 33) + y}</span>
-                      <span className="retire-snap-cell">
-                        <span className="retire-val">-{fmt(Math.round(displayHousing))}/mo</span>
-                        <span className="retire-pool-real">-{fmt(Math.round(displayHousingToday))} today</span>
-                      </span>
-                      <span className="retire-snap-cell">
-                        <span className="retire-val">-{fmt(Math.round(overseasSellAfterHousing))}/mo</span>
-                        <span className="retire-pool-real">-{fmt(Math.round(overseasSellAfterToday))} today</span>
-                      </span>
-                      <span className="retire-snap-cell">
-                        {overseasSellPoolRemaining >= 0 ? (
-                          <>
-                            <span className="retire-val">{fmt(Math.round(overseasSellPoolRemaining))}</span>
-                            <span className="retire-pool-real">{fmt(Math.round(overseasSellPoolReal))} today</span>
-                          </>
-                        ) : <span className="retire-pool-empty">Depleted</span>}
-                      </span>
-                    </div>
-                    {ssIncome > 0 && <div className="ss-income-line">🏛 SS {fmt(Math.round(ssIncome))}/mo offsets pool withdrawals</div>}
-                    {careOverseas > 0 && <div className="care-cost-line">🏥 overseas care (all-inclusive, replaces housing)</div>}
-                  </div>
-                )
-              })}
-            </div>
-            <div className="retire-note">Sell at retirement · move overseas · overseas care pricing · no US housing costs</div>
-
             {/* Sell & Buy — sell current house, buy new home at new location */}
             <div className="retire-option-divider" />
             <div className="retire-snap-header">
-              Option 4 · 🏠 Sell &amp; Buy · {fmt(Math.round(newHomePriceNominal))} new home · {relocateBuyDownPct}% down <span className="retire-tax-tag">{Math.round(blendedTaxRate(20) * 100)}% blended tax</span>
+              Option 5 · 🏠 Sell &amp; Buy · {fmt(Math.round(newHomePriceNominal))} new home · {relocateBuyDownPct}% down <span className="retire-tax-tag">{Math.round(blendedTaxRate(20) * 100)}% blended tax</span>
             </div>
             <div className="retire-combined-row">
               <span className="retire-label">Buy path pool at Yr {rY}</span>
@@ -3361,7 +3361,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
             {/* Sell & Buy All Cash */}
             <div className="retire-option-divider" />
             <div className="retire-snap-header">
-              Option 5 · 💰 Sell &amp; Buy All Cash · {fmt(Math.round(newHomePriceNominal))} new home <span className="retire-tax-tag">{Math.round(blendedTaxRate(20) * 100)}% blended tax</span>
+              Option 6 · 💰 Sell &amp; Buy All Cash · {fmt(Math.round(newHomePriceNominal))} new home <span className="retire-tax-tag">{Math.round(blendedTaxRate(20) * 100)}% blended tax</span>
             </div>
             <div className="retire-combined-row">
               <span className="retire-label">Buy path pool at Yr {rY}</span>
@@ -3393,7 +3393,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
             </div>
             {sellBuyCashStartPool < combinedPortRetire + sellBuyNetProceeds && (
               <div className="retire-note" style={{ color: '#22c55e' }}>
-                vs Option 6: pool is {fmt(Math.round(Math.abs(sellBuyCashStartPool - sellBuyStartPool)))} smaller but saves {fmt(Math.round(newHomePI))}/mo on mortgage
+                vs Option 5: pool is {fmt(Math.round(Math.abs(sellBuyCashStartPool - sellBuyStartPool)))} smaller but saves {fmt(Math.round(newHomePI))}/mo on mortgage
               </div>
             )}
             <div className="retire-housing-snaps">
@@ -3439,7 +3439,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
             {/* Option 8: Rentvest */}
             <div className="retire-option-divider" />
             <div className="retire-snap-header">
-              Option 6 · 🏘 Rentvest · Buy {fmt(rentvestPrice || 0)} now · rent out · retire in <span className="retire-tax-tag">{Math.round(blendedTaxRate(20) * 100)}% blended tax</span>
+              Option 7 · 🏘 Rentvest · Buy {fmt(rentvestPrice || 0)} now · rent out · retire in <span className="retire-tax-tag">{Math.round(blendedTaxRate(20) * 100)}% blended tax</span>
             </div>
 
             {/* Pre-retirement summary */}
@@ -3525,7 +3525,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
             {/* Rent-path overseas section */}
             <div className="retire-option-divider" />
             <div className="retire-snap-header">
-              Option 7 · 🌏 Overseas · rent path · {fmt(overseasSpendingCap || 0)}/mo spend today <span className="retire-tax-tag">{Math.round(blendedTaxRate(15) * 100)}% blended tax</span>
+              Option 8 · 🌏 Overseas · rent path · {fmt(overseasSpendingCap || 0)}/mo spend today <span className="retire-tax-tag">{Math.round(blendedTaxRate(15) * 100)}% blended tax</span>
             </div>
             <div className="retire-combined-row">
               <span className="retire-label">Rent path pool at Yr {rY}</span>
@@ -3575,7 +3575,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
             {/* Keep renting in US — rent path */}
             <div className="retire-option-divider" />
             <div className="retire-snap-header">
-              Option 8 · 🏘 Keep Renting in US · {fmt(combinedSpendCap)}/mo spend today <span className="retire-tax-tag">{Math.round(blendedTaxRate(20) * 100)}% blended tax</span>
+              Option 9 · 🏘 Keep Renting in US · {fmt(combinedSpendCap)}/mo spend today <span className="retire-tax-tag">{Math.round(blendedTaxRate(20) * 100)}% blended tax</span>
             </div>
             <div className="retire-combined-row">
               <span className="retire-label">Rent path pool at Yr {rY}</span>
