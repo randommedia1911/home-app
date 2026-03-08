@@ -1197,13 +1197,18 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
   const relocateTaxGrossUp  = grossUp(20)   // Options 4–7: US relocation (~20% fed+lower state)
   const rentvestTaxGrossUp  = grossUp(20)   // Option 8: rentvest property location
   // Social Security offset: SS benefit (today's $) grows with inflation (COLA), kicks in at ssClaimAge
-  // Reduces the amount that must be pulled from the pool each year
-  const ssClaimYr = (ssClaimAge || 67) - (currentAge || 33)  // year index when SS starts
-  const combinedSS = (dSS || 0) + (aSS || 0)  // combined monthly benefit in today's $
+  // Apply claiming age adjustment: 62→70%, 65→86.7%, 67→100% (FRA), 70→124%
+  const ssClaimYr = (ssClaimAge || 67) - (currentAge || 33)
+  const ssClaimFactor = (ssClaimAge || 67) === 62 ? 0.70
+    : (ssClaimAge || 67) === 65 ? 0.867
+    : (ssClaimAge || 67) === 70 ? 1.24
+    : 1.0
+  const combinedSSFull = (dSS || 0) + (aSS || 0)
+  const combinedSS = Math.round(combinedSSFull * ssClaimFactor)
   const ssOffsetAtYear = yr => {
     if (yr < ssClaimYr) return 0
     const inflFactor = Math.pow(1 + (inflationRate || 3) / 100, yr)
-    return combinedSS * inflFactor * 12  // annual SS income in future dollars
+    return combinedSS * inflFactor * 12
   }
   // Late life care cost: added to pool withdrawals from careStartAge until age 95
   // 'stay' = Opt 1 (CA home), 'relocate' = Opts 4-7 (cheaper US), 'overseas' = Opts 2-3, 8
@@ -3009,7 +3014,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
               </div>
               {combinedSS > 0 && (
                 <span className="retire-tax-gross" style={{ color: '#60a5fa' }}>
-                  🏛 SS {fmt(combinedSS)}/mo (D {fmt(dSS||0)} + A {fmt(aSS||0)}) · starts age {ssClaimAge || 67} · offsets pool withdrawals
+                  🏛 SS {fmt(combinedSS)}/mo today{ssClaimFactor !== 1 ? ` (${Math.round(ssClaimFactor * 100)}% of ${fmt(combinedSSFull)})` : ''} · starts age {ssClaimAge || 67} · offsets pool withdrawals
                 </span>
               )}
             </div>
@@ -3069,7 +3074,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                         ) : <span className="retire-pool-empty">Depleted</span>}
                       </span>
                     </div>
-                    {ssIncome > 0 && <div className="ss-income-line">🏛 SS {fmt(Math.round(ssIncome))}/mo offsets pool withdrawals</div>}
+                    {ssIncome > 0 && <div className="ss-income-line">🏛 SS {fmt(Math.round(ssIncome))}/mo · {fmt(combinedSS)} today{ssClaimFactor !== 1 ? ` (${Math.round(ssClaimFactor * 100)}%)` : ''} · offsets pool withdrawals</div>}
                     {careOverseas > 0 && <div className="care-cost-line">🏥 overseas care (all-inclusive, replaces housing)</div>}
                   </div>
                 )
@@ -3208,7 +3213,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                     </div>
                     {ssIncome > 0 && (
                       <div className="ss-income-line">
-                        🏛 SS {fmt(Math.round(ssIncome))}/mo offsets pool withdrawals
+                        🏛 SS {fmt(Math.round(ssIncome))}/mo · {fmt(combinedSS)} today{ssClaimFactor !== 1 ? ` (${Math.round(ssClaimFactor * 100)}%)` : ''} · offsets pool withdrawals
                       </div>
                     )}
                     {careOverseas > 0 && (
@@ -3283,7 +3288,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                         ) : <span className="retire-pool-empty">Depleted</span>}
                       </span>
                     </div>
-                    {ssIncome > 0 && <div className="ss-income-line">🏛 SS {fmt(Math.round(ssIncome))}/mo offsets pool withdrawals</div>}
+                    {ssIncome > 0 && <div className="ss-income-line">🏛 SS {fmt(Math.round(ssIncome))}/mo · {fmt(combinedSS)} today{ssClaimFactor !== 1 ? ` (${Math.round(ssClaimFactor * 100)}%)` : ''} · offsets pool withdrawals</div>}
                     {careRelocate > 0 && <div className="care-cost-line">🏥 +{fmt(Math.round(careRelocate))}/mo care facility</div>}
                   </div>
                 )
@@ -3356,7 +3361,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                         ) : <span className="retire-pool-empty">Depleted</span>}
                       </span>
                     </div>
-                    {ssIncome > 0 && <div className="ss-income-line">🏛 SS {fmt(Math.round(ssIncome))}/mo offsets pool withdrawals</div>}
+                    {ssIncome > 0 && <div className="ss-income-line">🏛 SS {fmt(Math.round(ssIncome))}/mo · {fmt(combinedSS)} today{ssClaimFactor !== 1 ? ` (${Math.round(ssClaimFactor * 100)}%)` : ''} · offsets pool withdrawals</div>}
                     {careRelocate > 0 && <div className="care-cost-line">🏥 +{fmt(Math.round(careRelocate))}/mo care facility</div>}
                   </div>
                 )
@@ -3434,7 +3439,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                         ) : <span className="retire-pool-empty">Depleted</span>}
                       </span>
                     </div>
-                    {ssIncome > 0 && <div className="ss-income-line">🏛 SS {fmt(Math.round(ssIncome))}/mo offsets pool withdrawals</div>}
+                    {ssIncome > 0 && <div className="ss-income-line">🏛 SS {fmt(Math.round(ssIncome))}/mo · {fmt(combinedSS)} today{ssClaimFactor !== 1 ? ` (${Math.round(ssClaimFactor * 100)}%)` : ''} · offsets pool withdrawals</div>}
                     {careRelocate > 0 && <div className="care-cost-line">🏥 +{fmt(Math.round(careRelocate))}/mo care facility</div>}
                   </div>
                 )
@@ -3521,7 +3526,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                         ) : <span className="retire-pool-empty">Depleted</span>}
                       </span>
                     </div>
-                    {ssIncome > 0 && <div className="ss-income-line">🏛 SS {fmt(Math.round(ssIncome))}/mo offsets pool withdrawals</div>}
+                    {ssIncome > 0 && <div className="ss-income-line">🏛 SS {fmt(Math.round(ssIncome))}/mo · {fmt(combinedSS)} today{ssClaimFactor !== 1 ? ` (${Math.round(ssClaimFactor * 100)}%)` : ''} · offsets pool withdrawals</div>}
                     {careRelocate > 0 && <div className="care-cost-line">🏥 +{fmt(Math.round(careRelocate))}/mo care facility</div>}
                   </div>                )
               })}
@@ -3570,7 +3575,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                         ) : <span className="retire-pool-empty">Depleted</span>}
                       </span>
                     </div>
-                    {ssIncome > 0 && <div className="ss-income-line">🏛 SS {fmt(Math.round(ssIncome))}/mo offsets pool withdrawals</div>}
+                    {ssIncome > 0 && <div className="ss-income-line">🏛 SS {fmt(Math.round(ssIncome))}/mo · {fmt(combinedSS)} today{ssClaimFactor !== 1 ? ` (${Math.round(ssClaimFactor * 100)}%)` : ''} · offsets pool withdrawals</div>}
                     {careOverseas > 0 && <div className="care-cost-line">🏥 +{fmt(Math.round(careOverseas))}/mo overseas care</div>}
                   </div>
                 )
@@ -3622,7 +3627,7 @@ export default function HouseCard({ house, dCashBudget, aCashBudget, dDown, aDow
                         ) : <span className="retire-pool-empty">Depleted</span>}
                       </span>
                     </div>
-                    {ssIncome > 0 && <div className="ss-income-line">🏛 SS {fmt(Math.round(ssIncome))}/mo offsets pool withdrawals</div>}
+                    {ssIncome > 0 && <div className="ss-income-line">🏛 SS {fmt(Math.round(ssIncome))}/mo · {fmt(combinedSS)} today{ssClaimFactor !== 1 ? ` (${Math.round(ssClaimFactor * 100)}%)` : ''} · offsets pool withdrawals</div>}
                     {careRelocate > 0 && <div className="care-cost-line">🏥 +{fmt(Math.round(careRelocate))}/mo care facility</div>}
                   </div>
                 )
