@@ -240,6 +240,16 @@
 .card-depletion-bad-sub { font-size: 0.63rem; color: #9ca3af; font-weight: 500; }
 .card-depletion-good { font-size: 0.7rem; font-weight: 700; color: #4ade80; }
 .card-depletion-val { font-size: 0.63rem; color: #9ca3af; font-weight: 500; }
+.card-depletion-portfolio {
+  font-size: 0.65rem;
+  color: #6b7280;
+  padding-top: 5px;
+  margin-top: 2px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+.card-depletion-portfolio strong {
+  color: #111827;
+}
 
 
 .reno-img-badge {

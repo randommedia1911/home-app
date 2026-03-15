@@ -27,7 +27,9 @@ export function calcTotalMonthly(house, dDown, aDown, closingCostPct, aMonthlyTa
   const utilsTotal  = (utilities.waterInHoa ? 0 : (utilities.water || 0))
                     + (utilities.trashInHoa ? 0 : (utilities.trash || 0))
                     + (utilities.electricity || 0)
-  const total       = pi + tax + hoa + insurance + utilsTotal
+  const downPct     = house.price > 0 ? (actualDownPmt / house.price) * 100 : 0
+  const pmi         = downPct < 20 ? (loanAmount * (house.pmiRate || 0) / 100) / 12 : 0
+  const total       = pi + tax + hoa + insurance + utilsTotal + pmi
 
   const aMonthly = Math.min(aMonthlyTarget, total)
   const dMonthly = total - aMonthly
@@ -49,7 +51,7 @@ export function calcTotalMonthly(house, dDown, aDown, closingCostPct, aMonthlyTa
   const aNetAfter    = aMonthly
 
   return {
-    pi, tax, hoa, insurance, utilsTotal, total,
+    pi, tax, hoa, insurance, utilsTotal, pmi, total,
     totalCash, closingCosts, actualDownPmt, loanAmount,
     actualDownPct: (actualDownPmt / house.price) * 100,
     aMonthly, dMonthly,
@@ -123,11 +125,14 @@ export function calcAMonthlyFromOwnership(house, dDown, aDown, closingCostPct, d
   const utilsTotal = (utilities.waterInHoa ? 0 : (utilities.water || 0))
                    + (utilities.trashInHoa ? 0 : (utilities.trash || 0))
                    + (utilities.electricity || 0)
-  const total      = pi + tax + hoa + insurance + utilsTotal
+  const downPct    = house.price > 0 ? (actualDownPmt / house.price) * 100 : 0
+  const pmi        = downPct < 20 ? (loanAmount * (house.pmiRate || 0) / 100) / 12 : 0
+  const total      = pi + tax + hoa + insurance + utilsTotal + pmi
 
   return (1 - desiredDOwnPct / 100) * total
 }
 
+const _fmtUSD = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 export function fmt(n) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
+  return _fmtUSD.format(n)
 }
